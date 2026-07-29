@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import './index.css'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
 import Home from "./pages/Home";
 
@@ -15,6 +16,9 @@ import ExpirationsPage from "./pages/Expire";
 import RenewalForm from "./pages/Renewal";
 
 import SettingsPage from "./pages/Setting";
+import PolicyPage from './pages/Privacy';
+import SignupPage from './pages/Signup';
+import LoginPage from './pages/Login';
 
 const App: React.FC = () => {
 
@@ -22,7 +26,7 @@ const App: React.FC = () => {
 
     <Router>
 
-      <nav>
+      {/* <nav>
 
         <Link to="/">Home</Link> |{" "}
 
@@ -40,7 +44,7 @@ const App: React.FC = () => {
 
         <Link to="/renew">Renew</Link>
 
-      </nav>
+      </nav> */}
 
 
 
@@ -61,7 +65,12 @@ const App: React.FC = () => {
         <Route path="/renew" element={<RenewalForm />} />
 
         <Route path="/setting" element={<SettingsPage />} />
+        <Route path="/privacy" element={<PolicyPage/>} />
+        <Route path="/contact" element={<Contact/>} />
 
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/signin" element={<LoginPage />} />
+        
       </Routes>
 
     </Router>

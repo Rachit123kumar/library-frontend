@@ -1,13 +1,36 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
+import {
+  LuBuilding2,
+  LuMapPin,
+  LuMail,
+  LuClock,
+  LuPlus,
+  LuPencil ,
+  LuSave,
+  // LuX,
+  LuZap,
+  LuSlidersHorizontal ,
+  LuArmchair,
+  LuShieldCheck,
+  LuGrid2X2,
+  LuLoader,
+  LuRefreshCw,
+  LuLayers,
+  LuSparkles,
+  LuLock,
+  LuLockKeyholeOpen
+} from 'react-icons/lu';
+import Navbar from '../components/Navbar';
 
-interface Room {
+export interface Room {
   id: number;
   name: string;
-  description: string;
+  description: string | null;
   _count?: { seats: number };
 }
 
-interface Seat {
+export interface Seat {
   id: number;
   seatNumber: number;
   nearAc: boolean;
@@ -16,7 +39,10 @@ interface Seat {
   room?: { name: string };
 }
 
-export default function SettingsPage() {
+const BASE_URL ='https://api.libdesk.online';
+// const BASE_URL = import.meta.env?.VITE_API_URL || 'https://api.libdesk.online';
+
+export default function SettingsPage(): React.JSX.Element {
   // Global Profile Details State
   const [libraryName, setLibraryName] = useState('');
   const [address, setAddress] = useState('');
@@ -35,33 +61,51 @@ export default function SettingsPage() {
   // Dynamic Sequential Seat Generator Parameters
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [startSeatNum, setStartSeatNum] = useState('1');
-  const [endSeatNum, setEndSeatNum] = useState('150');
+  const [endSeatNum, setEndSeatNum] = useState('50');
 
   // Interactive Live Filtering Desk Grid States
   const [filterRoomId, setFilterRoomId] = useState('');
   const [allSeats, setAllSeats] = useState<Seat[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  // Load baseline infrastructure records on mount
+  // Independent Skeleton Loading States
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [loadingSeats, setLoadingSeats] = useState(true);
+  const [savingGlobal, setSavingGlobal] = useState(false);
+  const [savingBatch, setSavingBatch] = useState(false);
+
+  const showToast = (title: string, msg: string, type: 'success' | 'info' | 'error' = 'info') => {
+    toast.dismiss();
+    const content = (
+      <div>
+        <div className="font-bold text-xs font-mono uppercase tracking-wider text-white">{title}</div>
+        <div className="text-xs text-slate-300 mt-0.5">{msg}</div>
+      </div>
+    );
+    const opts = { toastId: 'settings-single-toast', autoClose: 3000 };
+    if (type === 'success') toast.success(content, opts);
+    else if (type === 'error') toast.error(content, opts);
+    else toast.info(content, opts);
+  };
+
   useEffect(() => {
     loadSettingsData();
   }, []);
 
-  // Sync seat grid views dynamically whenever room filters change
   useEffect(() => {
     loadSeatsList();
   }, [filterRoomId]);
 
-  // 💡 FIXED ROUTE: Hits /api/v1/global to fetch base setup profile parameters
   const loadSettingsData = async () => {
+    setLoadingSettings(true);
     try {
-      const res = await fetch('http://localhost:3000/api/v1/global');
+      const res = await fetch(`${BASE_URL}/api/v1/global`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.success) {
         if (data.settings) {
           setLibraryName(data.settings.libraryName || '');
           setAddress(data.settings.address || '');
-          setEmail(data.settings.email || '');
+          setEmail(data.settings.email || 'admin@libdesk.online');
           setHoldDays(data.settings.holdDays?.toString() || '3');
           if (data.settings.createdAt) {
             setCreatedAtDate(new Date(data.settings.createdAt).toLocaleDateString('en-IN', {
@@ -69,99 +113,121 @@ export default function SettingsPage() {
             }));
           }
         }
-        setRoomsList(data.rooms || []);
-        if (data.rooms?.length > 0 && !selectedRoomId) {
-          setSelectedRoomId(data.rooms[0].id.toString());
+        if (data.rooms) {
+          setRoomsList(data.rooms);
+          if (!selectedRoomId && data.rooms.length > 0) {
+            setSelectedRoomId(data.rooms[0].id.toString());
+          }
         }
       }
     } catch (err) {
-      console.error("Failed loading library settings configuration payload:", err);
+      console.error("Error fetching library settings configuration payload:", err);
+      showToast("Data Sync Error", "Unable to load settings from server.", "error");
+    } finally {
+      setLoadingSettings(false);
     }
   };
 
-  // 💡 FIXED ROUTE: Hits /api/v1/seats-list
   const loadSeatsList = async () => {
+    setLoadingSeats(true);
     try {
       const url = filterRoomId 
-        ? `http://localhost:3000/api/v1/seats-list?roomId=${filterRoomId}`
-        : 'http://localhost:3000/api/v1/seats-list';
+        ? `${BASE_URL}/api/v1/seats-list?roomId=${filterRoomId}`
+        : `${BASE_URL}/api/v1/seats-list`;
       const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data.success) setAllSeats(data.seats || []);
+      if (data.success && Array.isArray(data.seats)) {
+        setAllSeats(data.seats);
+      } else {
+        setAllSeats([]);
+      }
     } catch (err) {
       console.error("Error retrieving desk arrays:", err);
+      setAllSeats([]);
+    } finally {
+      setLoadingSeats(false);
     }
   };
 
-  // 💡 FIXED ROUTE: Hits /api/v1/global via POST to update profile details
   const handleGlobalConfigSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setSavingGlobal(true);
     try {
-      const res = await fetch('http://localhost:3000/api/v1/global', {
+      const res = await fetch(`${BASE_URL}/api/v1/global`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ libraryName, address, holdDays })
       });
       const data = await res.json();
-      alert(data.message || "Profile directories successfully customized.");
-      loadSettingsData();
+      if (res.ok && data.success) {
+        showToast("Config Updated", data.message || "Profile directories successfully customized.", "success");
+        loadSettingsData();
+      } else {
+        showToast("Update Failed", data.message || "Could not save configuration", "error");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Error saving global config:", err);
+      showToast("Network Error", "Failed to save configuration to server.", "error");
     } finally {
-      setLoading(false);
+      setSavingGlobal(false);
     }
   };
 
-  // 💡 FIXED ROUTE: Hits /api/v1/rooms via POST to append space
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomName.trim()) return;
     try {
-      const res = await fetch('http://localhost:3000/api/v1/rooms', {
+      const res = await fetch(`${BASE_URL}/api/v1/rooms`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newRoomName, description: newRoomDesc })
       });
       const data = await res.json();
       if (data.success) {
-        alert(data.message);
-        setNewRoomName(''); setNewRoomDesc('');
+        showToast("Room Added", data.message || `Created ${newRoomName}`, "success");
+        setNewRoomName('');
+        setNewRoomDesc('');
         loadSettingsData();
       } else {
-        alert(data.message);
+        showToast("Action Failed", data.message || "Could not add room block", "error");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Error creating room:", err);
+      showToast("Server Error", "Failed to communicate with room API.", "error");
     }
   };
 
-  // 💡 FIXED ROUTE: Hits /api/v1/rooms/:id via PUT
   const handleUpdateRoomExecute = async (roomId: number) => {
     try {
-      const res = await fetch(`http://localhost:3000/api/v1/rooms/${roomId}`, {
+      const res = await fetch(`${BASE_URL}/api/v1/rooms/${roomId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editRoomName, description: editRoomDesc })
       });
       const data = await res.json();
       if (data.success) {
-        alert(data.message);
+        showToast("Room Updated", data.message || "Room parameters updated", "success");
         setEditingRoomId(null);
         loadSettingsData();
+      } else {
+        showToast("Update Failed", data.message || "Could not update room", "error");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Error updating room:", err);
+      showToast("Server Error", "Failed to update room details.", "error");
     }
   };
 
-  // 💡 FIXED ROUTE: Hits /api/v1/seats/batch via POST
   const handleBatchSeatCreation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRoomId) return alert("Please specify an active room to populate.");
-    setLoading(true);
+    if (!selectedRoomId) {
+      showToast("Room Required", "Please specify an active room to populate.", "error");
+      return;
+    }
+    setSavingBatch(true);
     try {
-      const res = await fetch('http://localhost:3000/api/v1/seats/batch', {
+      const res = await fetch(`${BASE_URL}/api/v1/seats/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,20 +237,24 @@ export default function SettingsPage() {
         })
       });
       const data = await res.json();
-      alert(data.message || "Batch matrix population successfully processed.");
-      loadSeatsList();
-      loadSettingsData();
+      if (data.success) {
+        showToast("Matrix Populated", data.message || "Batch matrix population successfully processed.", "success");
+        loadSeatsList();
+        loadSettingsData();
+      } else {
+        showToast("Batch Failed", data.message || "Failed to generate seat range.", "error");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Error generating seats:", err);
+      showToast("Server Error", "Batch seat generation failed.", "error");
     } finally {
-      setLoading(false);
+      setSavingBatch(false);
     }
   };
 
-  // 💡 FIXED ROUTE: Hits /api/v1/seats/:id via PATCH
   const toggleSeatFeature = async (seat: Seat, updatedFields: Partial<Seat>) => {
     try {
-      const res = await fetch(`http://localhost:3000/api/v1/seats/${seat.id}`, {
+      const res = await fetch(`${BASE_URL}/api/v1/seats/${seat.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -192,253 +262,506 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.success) {
         setAllSeats(prev => prev.map(s => s.id === seat.id ? { ...s, ...updatedFields } : s));
+        showToast("Seat Updated", `Desk #${seat.seatNumber} configuration saved`, "success");
+      } else {
+        showToast("Update Failed", data.message || "Could not toggle desk feature", "error");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Error toggling seat feature:", err);
+      showToast("Server Error", "Failed to update desk settings.", "error");
     }
   };
 
   return (
-    <div style={styles.outerContainer}>
-      <div style={styles.headerLayoutFlex}>
-        <div>
-          <h1 style={styles.mainTitleHeader}>Master Infrastructure Setup Panel</h1>
-          <p style={styles.subHeaderDescription}>Review operational parameters, append active room blocks, and control desk properties configuration.</p>
-        </div>
-        {createdAtDate && (
-          <div style={styles.systemMetaBanner}>
-            <span>🗓️ Server Setup Profile Init:</span>
-            <strong>{createdAtDate}</strong>
-          </div>
-        )}
-      </div>
+    <div className="min-h-screen bg-[#080C14] text-slate-100 font-sans antialiased selection:bg-blue-600 selection:text-white relative pb-20 overflow-x-hidden">
+      <Navbar/>
+      {/* Ambient Grid Background */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293d12_1px,transparent_1px),linear-gradient(to_bottom,#1f293d12_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[300px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent blur-[120px] pointer-events-none rounded-full" />
 
-      <div style={styles.splitMainDashboardLayoutGrid}>
+      {/* Main Page Workspace */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8 relative z-10">
         
-        {/* LEFT COLUMN: GLOBAL IDENTITY & MANAGEMENT CONTROL MODULES */}
-        <div style={styles.layoutFlexVerticalStack}>
-          
-          {/* CARD MODULE 1: PROFILE PARAMETERS FORM */}
-          <div style={styles.cardContainer}>
-            <h3 style={styles.sectionHeading}>1. Library Core Identity & Policy Rules</h3>
-            <form onSubmit={handleGlobalConfigSubmit} style={styles.formStructure}>
-              <div style={styles.formVerticalStackSpacing}>
-                <div>
-                  <label style={styles.fieldLabel}>Library Display Title:</label>
-                  <input required type="text" value={libraryName} onChange={(e) => setLibraryName(e.target.value)} style={styles.inputField} />
-                </div>
-                <div>
-                  <label style={styles.fieldLabel}>Administrative Email Reference (Immutable Profile):</label>
-                  <input disabled type="email" value={email} style={{...styles.inputField, backgroundColor: '#F3F4F6', color: '#6B7280', cursor: 'not-allowed'}} />
-                </div>
-                <div>
-                  <label style={styles.fieldLabel}>Physical Layout Location Address:</label>
-                  <input required type="text" value={address} onChange={(e) => setAddress(e.target.value)} style={styles.inputField} />
-                </div>
-                <div>
-                  <label style={styles.fieldLabel}>Late Seat Retention Grace Window (Days):</label>
-                  <input required type="number" min="0" value={holdDays} onChange={(e) => setHoldDays(e.target.value)} style={styles.inputField} />
-                </div>
-              </div>
-              <button type="submit" disabled={loading} style={styles.saveActionButton}>Synchronize Identity Properties</button>
-            </form>
+        {/* Sub-Header Banner */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-xs font-mono text-blue-400 mb-2">
+              <LuSlidersHorizontal  className="w-3.5 h-3.5" />
+              <span>Master System Settings</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Infrastructure & Rules Panel
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 font-mono mt-1">
+              Configure library profile attributes, physical room boundaries, and desk matrix properties.
+            </p>
           </div>
 
-          {/* CARD MODULE 2: ROOM ARCHITECTURE LISTS & SETUP */}
-          <div style={styles.cardContainer}>
-            <h3 style={styles.sectionHeading}>2. Rooms Structural Map & Capacities</h3>
-            
-            <div style={styles.roomRowVerticalContainer}>
-              {roomsList.length === 0 ? (
-                <div style={styles.emptyInlineAlertNotice}>No active room sectors initialized in the database structure layout.</div>
-              ) : (
-                roomsList.map(room => (
-                  <div key={room.id} style={styles.roomCardWrapperLayout}>
-                    {editingRoomId === room.id ? (
-                      <div style={styles.roomEditFormFlowContainer}>
-                        <div style={{ flex: 1, minWidth: '200px' }}>
-                          <input type="text" value={editRoomName} onChange={(e) => setEditRoomName(e.target.value)} style={{...styles.inputField, marginBottom: '6px'}} placeholder="Room Name" />
-                          <input type="text" value={editRoomDesc} onChange={(e) => setEditRoomDesc(e.target.value)} style={styles.inputField} placeholder="Description Features" />
-                        </div>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          <button type="button" onClick={() => handleUpdateRoomExecute(room.id)} style={{...styles.saveActionButton, marginTop: 0, padding: '8px 14px'}}>Save</button>
-                          <button type="button" onClick={() => setEditingRoomId(null)} style={styles.cancelButton}>Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={styles.roomTitleWeightText}>📍 {room.name}</span>
-                            <span style={styles.capacityTextTallyBadge}>{room._count?.seats || 0} Desks Assigned</span>
-                          </div>
-                          <p style={styles.roomDescTextParagraph}>{room.description || 'No special configuration characteristics detailed.'}</p>
-                        </div>
-                        <button type="button" onClick={() => {
-                          setEditingRoomId(room.id);
-                          setEditRoomName(room.name);
-                          setEditRoomDesc(room.description || '');
-                        }} style={styles.inlineEditLinkButton}>Edit Info</button>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                loadSettingsData();
+                loadSeatsList();
+              }}
+              disabled={loadingSettings || loadingSeats}
+              className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-colors"
+              title="Reload Infrastructure Settings"
+            >
+              <LuRefreshCw className={`w-4 h-4 ${(loadingSettings || loadingSeats) ? 'animate-spin text-blue-400' : ''}`} />
+            </button>
 
-            <form onSubmit={handleCreateRoom} style={styles.appendRoomFormWrapperContainer}>
-              <label style={{...styles.fieldLabel, color: '#4F46E5', fontWeight: 700}}>+ Append New Room Block</label>
-              <div style={{...styles.formVerticalStackSpacing, marginTop: '8px', gap: '8px'}}>
-                <input type="text" required placeholder="Room Partition Name (e.g., Silent Wing A)" value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} style={styles.inputField} />
-                <input type="text" placeholder="Features / Notes (e.g., General Row, Air Purifier)" value={newRoomDesc} onChange={(e) => setNewRoomDesc(e.target.value)} style={styles.inputField} />
-              </div>
-              <button type="submit" style={{...styles.saveActionButton, backgroundColor: '#10B981', marginTop: '10px'}}>Add Room Space</button>
-            </form>
-          </div>
-
-          {/* CARD MODULE 3: BATCH SEAT GENERATION TOOL */}
-          {roomsList.length > 0 && (
-            <div style={styles.cardContainer}>
-              <h3 style={styles.sectionHeading}>3. Range-Bounded Batch Seat Generator</h3>
-              <p style={styles.utilDescriptionTextBanner}>Populate space grids instantly using custom numerical limits (e.g., 1 to 150, or 151 to 200).</p>
-              <form onSubmit={handleBatchSeatCreation} style={styles.formStructure}>
-                <div style={styles.formVerticalStackSpacing}>
-                  <div>
-                    <label style={styles.fieldLabel}>Target Room Allocation Zone:</label>
-                    <select value={selectedRoomId} onChange={(e) => setSelectedRoomId(e.target.value)} style={styles.dropdownPickerFieldBox}>
-                      {roomsList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={styles.fieldLabel}>Start Seat Number:</label>
-                      <input required type="number" min="1" value={startSeatNum} onChange={(e) => setStartSeatNum(e.target.value)} style={styles.inputField} />
-                    </div>
-                    <div>
-                      <label style={styles.fieldLabel}>End Seat Limit:</label>
-                      <input required type="number" min="1" value={endSeatNum} onChange={(e) => setEndSeatNum(e.target.value)} style={styles.inputField} />
-                    </div>
-                  </div>
+            {createdAtDate && (
+              <div className="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-900/80 border border-slate-800 p-3 rounded-xl backdrop-blur-xl shrink-0">
+                <LuShieldCheck className="w-4 h-4 text-emerald-400" />
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase">Tenant Initialized</span>
+                  <strong className="text-slate-200">{createdAtDate}</strong>
                 </div>
-                <button type="submit" disabled={loading} style={{...styles.saveActionButton, backgroundColor: '#6366F1', width: '100%', justifyContent: 'center'}}>🚀 Execute Grid Generation Sequence</button>
-              </form>
-            </div>
-          )}
-
-        </div>
-
-        {/* RIGHT COLUMN: MAIN EDITABLE SEAT FEATURE CONTROL MATRIX PANELS */}
-        <div style={styles.layoutFlexVerticalStack}>
-          <div style={{...styles.cardContainer, flex: 1}}>
-            <div style={styles.matrixFilterSectionHeaderFlex}>
-              <div>
-                <h3 style={{...styles.sectionHeading, margin: 0}}>4. Individual Desk Control Matrix Grid Map</h3>
-                <p style={styles.utilDescriptionTextBanner}>Click the toggle indicators below to instantly switch desk features or block slots from routine bookings.</p>
-              </div>
-              <select value={filterRoomId} onChange={(e) => setFilterRoomId(e.target.value)} style={{...styles.dropdownPickerFieldBox, width: '220px'}}>
-                <option value="">-- View All Library Rooms --</option>
-                {roomsList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-            </div>
-
-            {allSeats.length === 0 ? (
-              <div style={styles.emptyMatrixFallbackNoticeArea}>
-                <div style={{ fontSize: '40px', marginBottom: '10px' }}>🪑</div>
-                <strong>No Active Desks Discovered</strong>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#9CA3AF' }}>Generate structural index parameters inside a room to see layout nodes here.</p>
-              </div>
-            ) : (
-              <div style={styles.matrixGridContainerDisplay}>
-                {allSeats.map(seat => (
-                  <div key={seat.id} style={{
-                    ...styles.seatInteractiveDashboardNodeCard,
-                    backgroundColor: seat.isBlocked ? '#FEF2F2' : '#FFF',
-                    borderColor: seat.isBlocked ? '#FCA5A5' : '#E5E7EB'
-                  }}>
-                    <div style={styles.seatCardHeadlineRowFlex}>
-                      <span style={{
-                        ...styles.seatCardMainHeadingLabelText,
-                        color: seat.isBlocked ? '#991B1B' : '#111827'
-                      }}>
-                        Desk #{seat.seatNumber}
-                      </span>
-                      <span style={styles.seatCardLocationSubtextTagLabel}>{seat.room?.name || 'Main Hall'}</span>
-                    </div>
-
-                    <div style={styles.seatMatrixControlsActionFlexRow}>
-                      <button
-                        type="button"
-                        onClick={() => toggleSeatFeature(seat, { nearAc: !seat.nearAc })}
-                        style={{
-                          ...styles.nodeControlInteractionBadgeButton,
-                          backgroundColor: seat.nearAc ? '#EFF6FF' : '#F9FAFB',
-                          color: seat.nearAc ? '#1D4ED8' : '#4B5563',
-                          borderColor: seat.nearAc ? '#BFDBFE' : '#D1D5DB'
-                        }}
-                      >
-                        {seat.nearAc ? "❄️ Near AC" : "🌬️ General"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => toggleSeatFeature(seat, { isBlocked: !seat.isBlocked })}
-                        style={{
-                          ...styles.nodeControlInteractionBadgeButton,
-                          backgroundColor: seat.isBlocked ? '#DC2626' : '#F9FAFB',
-                          color: seat.isBlocked ? '#FFF' : '#4B5563',
-                          borderColor: seat.isBlocked ? '#DC2626' : '#D1D5DB'
-                        }}
-                      >
-                        {seat.isBlocked ? "🔒 Blocked" : "🔓 Active"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </div>
         </div>
 
-      </div>
+        {/* 2-Column Split Workspace */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* LEFT COLUMN: GLOBAL IDENTITY & ROOM MANAGEMENT */}
+          <div className="lg:col-span-6 space-y-6">
+            
+            {}
+            {/* 1. CORE IDENTITY FORM */}
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-xl shadow-2xl space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs">1</span>
+                  Library Core Identity & Rules
+                </h2>
+                <LuBuilding2 className="w-4 h-4 text-blue-400" />
+              </div>
+
+              {loadingSettings ? (
+                /* Skeleton Loader for Form */
+                <div className="space-y-4 animate-pulse">
+                  <div className="space-y-2">
+                    <div className="h-3 w-32 bg-slate-800 rounded" />
+                    <div className="h-10 w-full bg-slate-800/80 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-40 bg-slate-800 rounded" />
+                    <div className="h-10 w-full bg-slate-800/60 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-36 bg-slate-800 rounded" />
+                    <div className="h-10 w-full bg-slate-800/80 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-48 bg-slate-800 rounded" />
+                    <div className="h-10 w-full bg-slate-800/80 rounded-xl" />
+                  </div>
+                  <div className="h-11 w-full bg-slate-800 rounded-xl mt-4" />
+                </div>
+              ) : (
+                <form onSubmit={handleGlobalConfigSubmit} className="space-y-4 font-mono text-xs">
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-300 uppercase">Library Display Title *</label>
+                    <input
+                      required
+                      type="text"
+                      value={libraryName}
+                      onChange={(e) => setLibraryName(e.target.value)}
+                      placeholder="e.g. ARA Study Hall & Reading Room"
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-400 uppercase">
+                      Admin Contact Email <span className="text-slate-500">(Immutable)</span>
+                    </label>
+                    <div className="relative">
+                      <LuMail className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        disabled
+                        type="email"
+                        value={email}
+                        className="w-full bg-slate-950 border border-slate-800/60 rounded-xl pl-9 pr-4 py-2.5 text-slate-500 cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-300 uppercase">Physical Address *</label>
+                    <div className="relative">
+                      <LuMapPin className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-3" />
+                      <input
+                        required
+                        type="text"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="Street, Landmark, City, State"
+                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-300 uppercase">Seat Hold Grace Window (Days) *</label>
+                    <div className="relative">
+                      <LuClock className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        value={holdDays}
+                        onChange={(e) => setHoldDays(e.target.value)}
+                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-all"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 pt-0.5">Days to hold desk allocations after expiration before releasing to open pool.</p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingGlobal}
+                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider transition-all shadow-lg shadow-blue-600/30 border border-blue-400/30 flex items-center justify-center gap-2 mt-2"
+                  >
+                    {savingGlobal ? <LuLoader className="w-4 h-4 animate-spin" /> : <LuSave className="w-4 h-4" />}
+                    <span>Save Global Configuration</span>
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {}
+            {/* 2. ROOM SECTORS MANAGEMENT */}
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-xl shadow-2xl space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center text-xs">2</span>
+                  Room Sectors & Capacity
+                </h2>
+                <LuLayers className="w-4 h-4 text-indigo-400" />
+              </div>
+
+              {/* Room Cards List */}
+              <div className="space-y-3">
+                {loadingSettings ? (
+                  /* Skeleton Loader for Room Sector Cards */
+                  <div className="space-y-3 animate-pulse">
+                    {[...Array(3)].map((_, idx) => (
+                      <div key={idx} className="p-4 rounded-xl bg-[#080C14] border border-slate-800 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <div className="h-4 w-36 bg-slate-800 rounded" />
+                          <div className="h-4 w-16 bg-slate-800 rounded-full" />
+                        </div>
+                        <div className="h-3 w-56 bg-slate-800/60 rounded" />
+                      </div>
+                    ))}
+                  </div>
+                ) : roomsList.length === 0 ? (
+                  <div className="p-6 text-center bg-[#080C14] rounded-xl border border-slate-800/80 text-slate-500 text-xs font-mono space-y-2">
+                    <LuLayers className="w-6 h-6 mx-auto text-slate-600" />
+                    <p>No active room sectors found. Add your first room block below.</p>
+                  </div>
+                ) : (
+                  roomsList.map((room) => (
+                    <div key={room.id} className="p-4 rounded-xl bg-[#080C14] border border-slate-800/90 space-y-2 font-mono text-xs">
+                      {editingRoomId === room.id ? (
+                        <div className="space-y-3">
+                          <input
+                            type="text"
+                            value={editRoomName}
+                            onChange={(e) => setEditRoomName(e.target.value)}
+                            placeholder="Room Name"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                          />
+                          <input
+                            type="text"
+                            value={editRoomDesc}
+                            onChange={(e) => setEditRoomDesc(e.target.value)}
+                            placeholder="Description"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateRoomExecute(room.id)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
+                            >
+                              Save Changes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingRoomId(null)}
+                              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-bold text-sm">{room.name}</span>
+                              <span className="px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-[10px] font-bold">
+                                {room._count?.seats || 0} Desks
+                              </span>
+                            </div>
+                            <p className="text-slate-400 text-[11px] mt-1 leading-relaxed">
+                              {room.description || 'Standard Study Space Sector'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingRoomId(room.id);
+                              setEditRoomName(room.name);
+                              setEditRoomDesc(room.description || '');
+                            }}
+                            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-colors"
+                            title="Edit Room"
+                          >
+                            <LuPencil  className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Append Room Form */}
+              <form onSubmit={handleCreateRoom} className="pt-2 border-t border-slate-800 space-y-3 font-mono text-xs">
+                <span className="text-indigo-400 font-bold uppercase text-[11px] flex items-center gap-1.5">
+                  <LuPlus className="w-3.5 h-3.5" /> Add New Room Block
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    required
+                    type="text"
+                    placeholder="Room Name (e.g. Ground AC)"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Features / Notes"
+                    value={newRoomDesc}
+                    onChange={(e) => setNewRoomDesc(e.target.value)}
+                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold uppercase tracking-wider transition-all shadow-lg shadow-emerald-600/20 border border-emerald-400/30 flex items-center justify-center gap-1.5"
+                >
+                  <LuPlus className="w-3.5 h-3.5" />
+                  <span>Create Room Sector</span>
+                </button>
+              </form>
+            </div>
+
+            {}
+            {/* 3. BATCH SEAT GENERATOR */}
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-xl shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-xs">3</span>
+                  Batch Seat Generator
+                </h2>
+                <LuSparkles className="w-4 h-4 text-cyan-400" />
+              </div>
+
+              <p className="text-xs font-mono text-slate-400 leading-relaxed">
+                Populate room space grids instantly using custom numerical limits (e.g. Seat #1 to #50).
+              </p>
+
+              {loadingSettings ? (
+                /* Skeleton Loader for Batch Generator */
+                <div className="space-y-4 animate-pulse">
+                  <div className="h-10 w-full bg-slate-800 rounded-xl" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="h-10 bg-slate-800 rounded-xl" />
+                    <div className="h-10 bg-slate-800 rounded-xl" />
+                  </div>
+                  <div className="h-11 w-full bg-slate-800 rounded-xl" />
+                </div>
+              ) : roomsList.length === 0 ? (
+                <div className="p-4 bg-[#080C14] rounded-xl border border-slate-800 text-slate-500 text-xs font-mono text-center">
+                  Create a room block above first to enable batch seat generation.
+                </div>
+              ) : (
+                <form onSubmit={handleBatchSeatCreation} className="space-y-4 font-mono text-xs">
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-300 uppercase">Target Room Zone *</label>
+                    <select
+                      value={selectedRoomId}
+                      onChange={(e) => setSelectedRoomId(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      {roomsList.map(r => (
+                        <option key={r.id} value={r.id.toString()}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="block text-slate-300 uppercase">Start Seat # *</label>
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        value={startSeatNum}
+                        onChange={(e) => setStartSeatNum(e.target.value)}
+                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-slate-300 uppercase">End Seat # *</label>
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        value={endSeatNum}
+                        onChange={(e) => setEndSeatNum(e.target.value)}
+                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingBatch}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold uppercase tracking-wider transition-all shadow-lg shadow-cyan-600/20 border border-cyan-400/30 flex items-center justify-center gap-2"
+                  >
+                    {savingBatch ? <LuLoader className="w-4 h-4 animate-spin" /> : <LuGrid2X2 className="w-4 h-4" />}
+                    <span>Generate Seat Range</span>
+                  </button>
+                </form>
+              )}
+            </div>
+
+          </div>
+
+          {}
+          {/* RIGHT COLUMN: INDIVIDUAL DESK FEATURE CONTROL MATRIX */}
+          <div className="lg:col-span-6">
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-xl shadow-2xl space-y-5">
+              
+              {/* Matrix Control Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div>
+                  <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-xs">4</span>
+                    Desk Feature Control Matrix
+                  </h2>
+                  <p className="text-[11px] text-slate-400 font-mono mt-1">
+                    Toggle AC features or lock desks for maintenance.
+                  </p>
+                </div>
+
+                {/* Filter Dropdown */}
+                <select
+                  value={filterRoomId}
+                  onChange={(e) => setFilterRoomId(e.target.value)}
+                  className="bg-[#080C14] border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">All Rooms ({allSeats.length} Desks)</option>
+                  {roomsList.map(r => (
+                    <option key={r.id} value={r.id.toString()}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Seats Grid Matrix Display with Skeleton Loading */}
+              {loadingSeats ? (
+                /* Skeleton Loader for Seat Grid Cards */
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[640px] overflow-y-auto pr-1 animate-pulse">
+                  {[...Array(8)].map((_, idx) => (
+                    <div key={idx} className="p-3.5 rounded-xl border border-slate-800/80 bg-[#080C14] space-y-3">
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                        <div className="h-3.5 w-20 bg-slate-800 rounded" />
+                        <div className="h-2.5 w-16 bg-slate-800/60 rounded" />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="h-7 flex-1 bg-slate-800 rounded-lg" />
+                        <div className="h-7 flex-1 bg-slate-800 rounded-lg" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : allSeats.length === 0 ? (
+                <div className="p-12 text-center bg-[#080C14] rounded-xl border border-slate-800 text-slate-500 text-xs font-mono space-y-2">
+                  <LuArmchair className="w-8 h-8 mx-auto text-slate-600" />
+                  <p>No active desks found for this filter selection.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[640px] overflow-y-auto pr-1">
+                  {allSeats.map((seat) => (
+                    <div
+                      key={seat.id}
+                      className={`p-3.5 rounded-xl border font-mono transition-all space-y-3 ${
+                        seat.isBlocked
+                          ? 'bg-amber-950/20 border-amber-500/40 text-amber-300'
+                          : 'bg-[#080C14] border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                        <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                          <LuArmchair className="w-3.5 h-3.5 text-blue-400" />
+                          Desk #{seat.seatNumber}
+                        </span>
+                        <span className="text-[10px] text-slate-500 truncate max-w-[100px]">
+                          {seat.room?.name || 'Main Hall'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* AC Feature Toggle */}
+                        <button
+                          type="button"
+                          onClick={() => toggleSeatFeature(seat, { nearAc: !seat.nearAc })}
+                          className={`flex-1 py-1.5 px-2 rounded-lg border text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
+                            seat.nearAc
+                              ? 'bg-blue-600/20 border-blue-500/40 text-blue-300'
+                              : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+                          }`}
+                        >
+                          <LuZap className="w-3 h-3 text-cyan-400" />
+                          <span>{seat.nearAc ? 'Near AC' : 'Non-AC'}</span>
+                        </button>
+
+                        {/* Block/Unblock Toggle */}
+                        <button
+                          type="button"
+                          onClick={() => toggleSeatFeature(seat, { isBlocked: !seat.isBlocked })}
+                          className={`flex-1 py-1.5 px-2 rounded-lg border text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
+                            seat.isBlocked
+                              ? 'bg-rose-600/20 border-rose-500/40 text-rose-300'
+                              : 'bg-emerald-600/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/20'
+                          }`}
+                        >
+                          {seat.isBlocked ? (
+                            <><LuLock className="w-3 h-3 text-rose-400" /> Blocked</>
+                          ) : (
+                            <><LuLockKeyholeOpen className="w-3 h-3 text-emerald-400" /> Active</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            </div>
+          </div>
+
+        </div>
+
+      </main>
     </div>
   );
 }
-
-const styles = {
-  outerContainer: { maxWidth: '1280px', margin: '25px auto', padding: '0 24px', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1F2937' },
-  headerLayoutFlex: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' as const, gap: '16px', marginBottom: '24px', borderBottom: '1px solid #E5E7EB', paddingBottom: '16px' },
-  mainTitleHeader: { fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.02em' },
-  subHeaderDescription: { margin: '4px 0 0 0', fontSize: '14px', color: '#6B7280' },
-  systemMetaBanner: { display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end', backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', padding: '8px 14px', borderRadius: '8px', fontSize: '13px' },
-  splitMainDashboardLayoutGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px', alignItems: 'flex-start' },
-  layoutFlexVerticalStack: { display: 'flex', flexDirection: 'column' as const, gap: '24px' },
-  cardContainer: { background: '#FFF', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
-  sectionHeading: { fontSize: '14px', color: '#4F46E5', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: '0 0 16px 0', borderBottom: '2px solid #F3F4F6', paddingBottom: '8px' },
-  formStructure: { display: 'flex', flexDirection: 'column' as const, gap: '16px' },
-  formVerticalStackSpacing: { display: 'flex', flexDirection: 'column' as const, gap: '12px' },
-  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
-  inputField: { padding: '10px 14px', border: '1px solid #D1D5DB', borderRadius: '6px', fontSize: '14px', color: '#111827', outline: 'none', width: '100%', boxSizing: 'border-box' as const, transition: 'border-color 0.15s ease' },
-  dropdownPickerFieldBox: { padding: '10px 12px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '14px', background: '#FFF', color: '#111827', outline: 'none', width: '100%', boxSizing: 'border-box' as const },
-  fieldLabel: { fontSize: '13px', fontWeight: 600, color: '#4B5563', display: 'block', marginBottom: '5px' },
-  saveActionButton: { display: 'inline-flex', alignItems: 'center', marginTop: '8px', padding: '10px 18px', background: '#4F46E5', color: '#FFF', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, transition: 'background-color 0.15s ease', alignSelf: 'flex-start' },
-  cancelButton: { padding: '10px 16px', backgroundColor: '#FFF', color: '#374151', border: '1px solid #D1D5DB', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 500 },
-  roomRowVerticalContainer: { display: 'flex', flexDirection: 'column' as const, gap: '10px', marginBottom: '18px' },
-  roomCardWrapperLayout: { padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#F9FAFB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' },
-  roomEditFormFlowContainer: { display: 'flex', width: '100%', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' },
-  roomTitleWeightText: { fontSize: '15px', fontWeight: 700, color: '#111827' },
-  capacityTextTallyBadge: { fontSize: '11px', fontWeight: 600, color: '#374151', backgroundColor: '#E5E7EB', padding: '2px 8px', borderRadius: '12px' },
-  roomDescTextParagraph: { margin: '4px 0 0 0', fontSize: '13px', color: '#6B7280', lineHeight: '1.4' },
-  inlineEditLinkButton: { fontSize: '13px', color: '#4F46E5', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', transition: 'background-color 0.15s ease' },
-  emptyInlineAlertNotice: { padding: '16px', border: '1px dashed #D1D5DB', borderRadius: '8px', color: '#6B7280', textAlign: 'center' as const, fontSize: '13px' },
-  appendRoomFormWrapperContainer: { borderTop: '1px dashed #E5E7EB', paddingTop: '16px', marginTop: '8px' },
-  utilDescriptionTextBanner: { margin: '0 0 14px 0', fontSize: '13px', color: '#6B7280', lineHeight: '1.4' },
-  matrixFilterSectionHeaderFlex: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' as const, gap: '14px', marginBottom: '20px', borderBottom: '1px solid #F3F4F6', paddingBottom: '14px' },
-  emptyMatrixFallbackNoticeArea: { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' as const, border: '2px dashed #E5E7EB', borderRadius: '8px', color: '#4B5563' },
-  matrixGridContainerDisplay: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', maxHeight: '720px', overflowY: 'auto' as const, paddingRight: '4px' },
-  seatInteractiveDashboardNodeCard: { padding: '12px', borderRadius: '8px', border: '1px solid', display: 'flex', flexDirection: 'column' as const, gap: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)', transition: 'transform 0.15s ease, box-shadow 0.15s ease' },
-  seatCardHeadlineRowFlex: { display: 'flex', flexDirection: 'column' as const, gap: '2px' },
-  seatCardMainHeadingLabelText: { fontSize: '14px', fontWeight: 700 },
-  seatCardLocationSubtextTagLabel: { fontSize: '11px', color: '#9CA3AF' },
-  seatMatrixControlsActionFlexRow: { display: 'flex', gap: '6px', marginTop: 'auto' },
-  nodeControlInteractionBadgeButton: { flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px 2px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', border: '1px solid', transition: 'all 0.15s ease' }
-};
