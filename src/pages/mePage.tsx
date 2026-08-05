@@ -28,7 +28,7 @@ import {
   LuMenu,
 } from 'react-icons/lu';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+const BASE_URL = import.meta.env.VITE_API_URL! || 'http://127.0.0.1:3000';
 
 const librarySchema = z.object({
   name: z.string().trim().min(3, { message: 'Library name must be at least 3 characters.' }),

@@ -344,7 +344,10 @@ export default function SeatManagementPage(): React.JSX.Element {
                           <div className="font-bold">{b.shift.name}</div>
                           {isSelected && <LuCheck className="text-purple-400 w-4 h-4" />}
                         </div>
-                        <div className="text-[10px] mt-1 text-slate-500">Current: <span className="text-amber-400 font-bold">Seat #{b.seat?.seatNumber}</span></div>
+                        <div className="text-[10px] mt-1 text-slate-500">Current: <span className="text-amber-400 font-bold">Seat #{b.seat?.seatNumber}</span>
+                      
+                        
+                        </div>
                       </button>
                     )
                   })
@@ -444,7 +447,10 @@ export default function SeatManagementPage(): React.JSX.Element {
                                     isSelected ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-600'
                                   }`}
                                 >
-                                  <div className="font-bold text-base font-mono">#{seat.seatNumber}</div>
+                                  <div className="font-bold text-base font-mono">#{seat.seatNumber}
+                                    
+                                  </div>
+                                  <span className='text-xs'>{seat?.roomName}</span>
                                 </button>
                               );
                             })}

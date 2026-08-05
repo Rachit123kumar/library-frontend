@@ -926,7 +926,7 @@ Thank you for joining ${library.name}!`;
             {/* STEP 4: RECEIPT */}
             {currentStep === 4 && completedAdmission && (
               <div className="bg-slate-900/60 border border-slate-800/90 rounded-3xl p-6 sm:p-10 backdrop-blur-xl space-y-8 max-w-3xl mx-auto">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-6">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-slate-800 pb-6 w-full">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                       <LuShieldCheck className="w-6 h-6" />
@@ -936,24 +936,25 @@ Thank you for joining ${library.name}!`;
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={printOrSavePdf}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 flex items-center gap-2 transition-all"
-                    >
-                      <LuPrinter className="w-4 h-4 text-blue-400" />
-                      <span>Print / PDF</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={shareWhatsAppReceipt}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/30"
-                    >
-                      <LuShare2 className="w-4 h-4" />
-                      <span>Share WhatsApp</span>
-                    </button>
-                  </div>
+               <div className="grid grid-cols-2 md:flex md:flex-row gap-3 w-full md:w-auto">
+  <button
+    type="button"
+    onClick={printOrSavePdf}
+    className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all"
+  >
+    <LuPrinter className="w-4 h-4 text-blue-400 shrink-0" />
+    <span className="truncate">Print / PDF</span>
+  </button>
+  
+  <button
+    type="button"
+    onClick={shareWhatsAppReceipt}
+    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-600/30"
+  >
+    <LuShare2 className="w-4 h-4 shrink-0" />
+    <span className="truncate">Share WhatsApp</span>
+  </button>
+</div>
                 </div>
 
                 <button

@@ -211,25 +211,19 @@ export default function RenewalPage(): React.JSX.Element {
   useEffect(() => {
     fetchLibraryDetails();
   }, [id]);
-const calculateEndDate = (start: string, months: number): string => {
-  const [y, m, d] = start.split('-').map(Number);
-  
-  // 1. Create the date object
-  const dateObj = new Date(y, m - 1, d);
-  
-  // 2. Add the requested number of months
-  dateObj.setMonth(dateObj.getMonth() + months);
-  
-  // 3. Subtract exactly 1 day so it ends on the last day of the cycle
-  dateObj.setDate(dateObj.getDate() - 1);
-  
-  // 4. Format securely back to YYYY-MM-DD (avoiding timezone bugs)
-  const finalYear = dateObj.getFullYear();
-  const finalMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const finalDay = String(dateObj.getDate()).padStart(2, '0');
-  
-  return `${finalYear}-${finalMonth}-${finalDay}`;
-};
+
+  const calculateEndDate = (start: string, months: number): string => {
+    const [y, m, d] = start.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    dateObj.setMonth(dateObj.getMonth() + months);
+    dateObj.setDate(dateObj.getDate() - 1);
+    
+    const finalYear = dateObj.getFullYear();
+    const finalMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const finalDay = String(dateObj.getDate()).padStart(2, '0');
+    
+    return `${finalYear}-${finalMonth}-${finalDay}`;
+  };
 
   const handleSearchStudents = async () => {
     if (!searchQuery.trim()) return;
@@ -328,12 +322,10 @@ const calculateEndDate = (start: string, months: number): string => {
   };
 
   const checkSeatAvailability = async () => {
-
     if (!selectedStudent) {
       showToast('Error', 'No student selected for renewal.', 'error');
       return;
     }
-
 
     if (selectedShiftIds.length === 0) {
       showToast('Validation Error', 'Please select at least one shift.', 'error');
@@ -555,18 +547,7 @@ const calculateEndDate = (start: string, months: number): string => {
             .join('\n')
         : '• Seat: Floating Member (Assign Later)';
 
-    const message = `🔄 *MEMBERSHIP RENEWED — ${library.name.toUpperCase()}* 🔄
-
-Hello *${completedRenewal.student.name}*, your membership has been successfully extended!
-
-🆔 *Renewal ID:* #${completedRenewal.membership.id}
-📅 *Valid Period:* ${formatReadableDate(completedRenewal.membership.startDate)} to ${formatReadableDate(completedRenewal.membership.endDate)}
-💳 *Amount Paid:* ₹${completedRenewal.payment.amount} (${completedRenewal.payment.paymentType.toUpperCase()})
-
-🪑 *Assigned Seats:*
-${seatsFormatted}
-
-Thank you for continuing your study with ${library.name}!`;
+    const message = `🔄 *MEMBERSHIP RENEWED — ${library.name.toUpperCase()}* 🔄\n\nHello *${completedRenewal.student.name}*, your membership has been successfully extended!\n\n🆔 *Renewal ID:* #${completedRenewal.membership.id}\n📅 *Valid Period:* ${formatReadableDate(completedRenewal.membership.startDate)} to ${formatReadableDate(completedRenewal.membership.endDate)}\n💳 *Amount Paid:* ₹${completedRenewal.payment.amount} (${completedRenewal.payment.paymentType.toUpperCase()})\n\n🪑 *Assigned Seats:*\n${seatsFormatted}\n\nThank you for continuing your study with ${library.name}!`;
 
     window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
@@ -587,45 +568,47 @@ Thank you for continuing your study with ${library.name}!`;
       />
 
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
-        <div className="bg-slate-900/60 border border-slate-800/90 rounded-2xl p-6 backdrop-blur-xl mb-8 flex items-center justify-between">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 relative z-10">
+        
+        {/* HEADER BAR */}
+        <div className="bg-slate-900/60 border border-slate-800/90 rounded-2xl p-4 sm:p-6 backdrop-blur-xl mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-400 uppercase">
               Membership Extensions
             </span>
-            <h1 className="text-2xl font-extrabold text-white mt-1">Student Renewal Portal</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-white mt-1">Student Renewal Portal</h1>
           </div>
           <button
             onClick={() => navigate(`/library/${id}`)}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold uppercase border border-slate-700 flex items-center gap-2"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold uppercase border border-slate-700 flex justify-center items-center gap-2"
           >
-            <LuArrowLeft className="w-4 h-4 text-blue-400" />
+            <LuArrowLeft className="w-4 h-4 text-blue-400 shrink-0" />
             <span>Dashboard</span>
           </button>
         </div>
 
         {/* STEP 1: SEARCH STUDENT */}
         {currentStep === 1 && (
-          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <LuSearch className="w-5 h-5 text-blue-400" /> Search Student to Renew
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-4 sm:p-8 space-y-5">
+            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <LuSearch className="w-5 h-5 text-blue-400 shrink-0" /> Search Student to Renew
             </h2>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col xs:flex-row gap-3">
               <input
                 type="text"
-                placeholder="Search by Name, Phone, or Membership ID..."
+                placeholder="Name, Phone, or Mem ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearchStudents()}
-                className="flex-1 bg-[#080C14] border border-slate-800 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                className="w-full xs:flex-1 bg-[#080C14] border border-slate-800 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
               />
               <button
                 onClick={handleSearchStudents}
                 disabled={searching}
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase rounded-xl flex items-center gap-2"
+                className="w-full xs:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2"
               >
-                {searching ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuSearch className="w-4 h-4" />}
+                {searching ? <LuRefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <LuSearch className="w-4 h-4 shrink-0" />}
                 <span>Search</span>
               </button>
             </div>
@@ -635,7 +618,7 @@ Thank you for continuing your study with ${library.name}!`;
                 <span className="text-xs text-slate-400 uppercase font-bold">
                   Matches Found ({searchResults.length}):
                 </span>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {searchResults.map((std) => {
                     const lastMem = std.memberships?.[0];
                     const lastSeatBooking = lastMem?.bookings?.find((b) => b.seat?.seatNumber !== undefined);
@@ -651,40 +634,43 @@ Thank you for continuing your study with ${library.name}!`;
                       <div
                         key={std.id}
                         onClick={() => handleSelectStudent(std)}
-                        className="cursor-pointer bg-[#080C14] border border-slate-800 hover:border-blue-500/50 p-4 rounded-2xl flex items-center justify-between transition-all"
+                        className="cursor-pointer bg-[#080C14] border border-slate-800 hover:border-blue-500/50 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all"
                       >
-                        <div className="space-y-1">
-                          <div className="font-bold text-sm text-white flex items-center gap-2">
-                            {std.name}
+                        <div className="space-y-2 w-full">
+                          <div className="font-bold text-sm text-white flex flex-wrap items-center gap-2">
+                            <span>{std.name}</span>
                             {lastMem && (
                               <span className="px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30 text-[10px] uppercase tracking-wider font-bold">
                                 Mem #{lastMem.id}
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-slate-400">
-                            Father: <span className="text-slate-300">{std.fathersName}</span> | Phone: {std.phone}
+                          
+                          <div className="text-xs text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span>Father: <span className="text-slate-300">{std.fathersName}</span></span>
+                            <span className="hidden sm:inline text-slate-600">|</span>
+                            <span>Phone: <span className="text-slate-300">{std.phone}</span></span>
                           </div>
 
                           {lastMem ? (
-                            <div className="pt-2 flex flex-wrap items-center gap-3 text-[11px]">
+                            <div className="pt-2 flex flex-wrap items-center gap-2 text-[11px]">
                               <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-blue-400">
-                                <LuCalendar className="w-3.5 h-3.5 text-blue-400" />
-                                <span>
+                                <LuCalendar className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">
                                   {formatReadableDate(lastMem.startDate)} – {formatReadableDate(lastMem.endDate)}
                                 </span>
                               </div>
 
                               <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-emerald-400 font-bold">
-                                <LuClock className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>
+                                <LuClock className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">
                                   {totalShiftsCount} Shift{totalShiftsCount !== 1 ? 's' : ''} ({shiftNames || 'Standard Shift'})
                                 </span>
                               </div>
 
                               {lastSeatBooking?.seat?.seatNumber !== undefined && (
                                 <div className="bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-amber-400 font-bold">
-                                  Seat #{lastSeatBooking.seat.seatNumber} ({lastSeatBooking.seat.room?.name || 'Main Room'})
+                                  Seat #{lastSeatBooking.seat.seatNumber} ({lastSeatBooking.seat.room?.name || 'Main'})
                                 </div>
                               )}
                             </div>
@@ -694,8 +680,8 @@ Thank you for continuing your study with ${library.name}!`;
                             </div>
                           )}
                         </div>
-                        <button className="px-4 py-2 bg-blue-600/10 border border-blue-500/30 text-blue-400 font-bold text-xs rounded-xl uppercase shrink-0">
-                          Select for Renewal
+                        <button className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/30 text-blue-400 font-bold text-xs rounded-xl uppercase shrink-0 transition-all">
+                          Select
                         </button>
                       </div>
                     );
@@ -708,29 +694,29 @@ Thank you for continuing your study with ${library.name}!`;
 
         {/* STEP 2: DATES & PLAN */}
         {currentStep === 2 && selectedStudent && (
-          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-4 sm:p-8 space-y-6">
+            <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div>
-                <h2 className="text-lg font-bold text-white">{selectedStudent.name}</h2>
-                <p className="text-xs text-slate-400">Father's Name: {selectedStudent.fathersName}</p>
+                <h2 className="text-base sm:text-lg font-bold text-white">{selectedStudent.name}</h2>
+                <p className="text-[11px] sm:text-xs text-slate-400">Father's Name: {selectedStudent.fathersName}</p>
               </div>
-              <button onClick={() => setCurrentStep(1)} className="text-xs text-blue-400 uppercase font-bold underline">
+              <button onClick={() => setCurrentStep(1)} className="text-[11px] sm:text-xs text-blue-400 uppercase font-bold underline shrink-0">
                 Change Student
               </button>
             </div>
 
             {lastM && (
-              <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-blue-400 uppercase">
-                  <LuHistory className="w-4 h-4 text-blue-400" /> Previous Membership History (Mem #{lastM.id}):
+              <div className="bg-slate-900 border border-slate-800 p-3 sm:p-4 rounded-2xl space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] sm:text-xs font-bold text-blue-400 uppercase">
+                  <LuHistory className="w-4 h-4 shrink-0 text-blue-400" /> Previous History (Mem #{lastM.id}):
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
-                  <div className="bg-[#080C14] p-3 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 uppercase block">Previous Start Date</span>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs pt-1">
+                  <div className="bg-[#080C14] p-2.5 sm:p-3 rounded-xl border border-slate-800/80">
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase block truncate">Prev Start Date</span>
                     <span className="text-white font-bold font-mono">{formatReadableDate(lastM.startDate)}</span>
                   </div>
-                  <div className="bg-[#080C14] p-3 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 uppercase block">Previous End Date</span>
+                  <div className="bg-[#080C14] p-2.5 sm:p-3 rounded-xl border border-slate-800/80">
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase block truncate">Prev End Date</span>
                     <span className="text-rose-400 font-bold font-mono">{formatReadableDate(lastM.endDate)}</span>
                   </div>
                 </div>
@@ -738,11 +724,11 @@ Thank you for continuing your study with ${library.name}!`;
             )}
 
             {Object.keys(previousSeatsMap).length > 0 && (
-              <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-2xl flex items-center gap-3 text-xs">
-                <LuBookmarkCheck className="w-5 h-5 text-blue-400 shrink-0" />
+              <div className="bg-blue-500/10 border border-blue-500/30 p-3 sm:p-4 rounded-2xl flex items-start sm:items-center gap-3 text-xs">
+                <LuBookmarkCheck className="w-5 h-5 text-blue-400 shrink-0 mt-0.5 sm:mt-0" />
                 <div>
-                  <span className="font-bold text-blue-400 uppercase block">Previous Seat Remembered:</span>
-                  <span className="text-slate-300">
+                  <span className="font-bold text-blue-400 uppercase block mb-0.5">Previous Seat Remembered:</span>
+                  <span className="text-slate-300 leading-relaxed">
                     Student previously occupied{' '}
                     {Object.entries(previousSeatsMap)
                       .map(([, sMeta]) => `Seat #${sMeta.seatNumber} (${sMeta.roomName})`)
@@ -754,8 +740,8 @@ Thank you for continuing your study with ${library.name}!`;
             )}
 
             <div className="space-y-3">
-              <label className="block text-xs uppercase font-bold text-slate-300">Renewal Schedule Strategy:</label>
-              <div className="grid grid-cols-2 gap-4">
+              <label className="block text-[11px] sm:text-xs uppercase font-bold text-slate-300">Renewal Schedule Strategy:</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -768,14 +754,14 @@ Thank you for continuing your study with ${library.name}!`;
                       setEndDate(calculateEndDate(nextStartStr, durationMonths));
                     }
                   }}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
+                  className={`p-3 sm:p-4 rounded-2xl border text-left transition-all ${
                     renewalType === 'continuous'
                       ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
                       : 'bg-[#080C14] border-slate-800 text-slate-400'
                   }`}
                 >
-                  <div className="font-bold text-xs uppercase text-blue-400">Continuous Renewal</div>
-                  <div className="text-[11px] text-slate-300 mt-1">
+                  <div className="font-bold text-[11px] sm:text-xs uppercase text-blue-400">Continuous Renewal</div>
+                  <div className="text-[10px] sm:text-[11px] text-slate-300 mt-1 leading-snug">
                     Auto-starts exactly 1 day after previous membership ended ({lastM ? formatReadableDate(new Date(new Date(lastM.endDate).setDate(new Date(lastM.endDate).getDate() + 1))) : 'Today'}).
                   </div>
                 </button>
@@ -783,14 +769,14 @@ Thank you for continuing your study with ${library.name}!`;
                 <button
                   type="button"
                   onClick={() => setRenewalType('custom')}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
+                  className={`p-3 sm:p-4 rounded-2xl border text-left transition-all ${
                     renewalType === 'custom'
                       ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
                       : 'bg-[#080C14] border-slate-800 text-slate-400'
                   }`}
                 >
-                  <div className="font-bold text-xs uppercase text-blue-400">Custom Date Renewal</div>
-                  <div className="text-[11px] text-slate-300 mt-1">
+                  <div className="font-bold text-[11px] sm:text-xs uppercase text-blue-400">Custom Date Renewal</div>
+                  <div className="text-[10px] sm:text-[11px] text-slate-300 mt-1 leading-snug">
                     For students who took a break. Select today, future, or custom dates.
                   </div>
                 </button>
@@ -798,27 +784,27 @@ Thank you for continuing your study with ${library.name}!`;
             </div>
 
             <div className="space-y-3 pt-4 border-t border-slate-800">
-              <label className="block text-xs uppercase font-bold text-slate-300">Select Renewal Duration:</label>
-              <div className="grid grid-cols-3 gap-3">
+              <label className="block text-[11px] sm:text-xs uppercase font-bold text-slate-300">Select Renewal Duration:</label>
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {[1, 2, 3].map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => handleDurationChange(m)}
-                    className={`py-3 px-4 rounded-xl font-bold text-xs uppercase border transition-all ${
+                    className={`py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl font-bold text-[10px] sm:text-xs uppercase border transition-all ${
                       durationMonths === m
                         ? 'bg-blue-600/20 border-blue-500 text-blue-400 shadow-lg shadow-blue-500/10'
                         : 'bg-[#080C14] border-slate-800 text-slate-400'
                     }`}
                   >
-                    {m} Month{m > 1 ? 's' : ''} Plan
+                    {m} Month{m > 1 ? 's' : ''}
                   </button>
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-3">
                 <div>
-                  <label className="block text-xs uppercase text-slate-400 mb-1">
+                  <label className="block text-[10px] sm:text-xs uppercase text-slate-400 mb-1">
                     Renewal Start Date ({formatReadableDate(startDate)})
                   </label>
                   <input
@@ -826,45 +812,45 @@ Thank you for continuing your study with ${library.name}!`;
                     value={startDate}
                     disabled={renewalType === 'continuous'}
                     onChange={(e) => handleStartDateChange(e.target.value)}
-                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-3 sm:px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs uppercase text-slate-400 mb-1">
+                  <label className="block text-[10px] sm:text-xs uppercase text-slate-400 mb-1">
                     Renewal End Date ({formatReadableDate(endDate)})
                   </label>
                   <input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-3 sm:px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
             </div>
 
             <div className="space-y-3 pt-4 border-t border-slate-800">
-              <label className="block text-xs uppercase font-bold text-slate-300">Selected Shift(s):</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <label className="block text-[11px] sm:text-xs uppercase font-bold text-slate-300">Selected Shift(s):</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {library?.shifts.map((shift) => {
                   const isSelected = selectedShiftIds.includes(shift.id);
                   return (
                     <div
                       key={shift.id}
                       onClick={() => toggleShiftSelection(shift.id)}
-                      className={`cursor-pointer p-4 rounded-2xl border transition-all ${
+                      className={`cursor-pointer p-3.5 sm:p-4 rounded-2xl border transition-all ${
                         isSelected
                           ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
                           : 'bg-[#080C14] border-slate-800 text-slate-400'
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-sm">{shift.name}</span>
-                        {isSelected && <LuCheck className="w-4 h-4 text-blue-400" />}
+                        <span className="font-bold text-xs sm:text-sm truncate pr-2">{shift.name}</span>
+                        {isSelected && <LuCheck className="w-4 h-4 text-blue-400 shrink-0" />}
                       </div>
-                      <div className="text-xs text-slate-400 mt-1">{shift.startTime} – {shift.endTime}</div>
-                      <div className="text-xs font-bold text-emerald-400 mt-2">
+                      <div className="text-[10px] sm:text-xs text-slate-400 mt-1">{shift.startTime} – {shift.endTime}</div>
+                      <div className="text-[11px] sm:text-xs font-bold text-emerald-400 mt-2">
                         ₹{shift.price * durationMonths} total
                       </div>
                     </div>
@@ -876,9 +862,9 @@ Thank you for continuing your study with ${library.name}!`;
             <button
               onClick={checkSeatAvailability}
               disabled={checkingAvailability}
-              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs uppercase rounded-xl shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2"
+              className="w-full py-3.5 sm:py-4 mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-[11px] sm:text-xs uppercase rounded-xl shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2"
             >
-              {checkingAvailability ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuSparkles className="w-4 h-4" />}
+              {checkingAvailability ? <LuRefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <LuSparkles className="w-4 h-4 shrink-0" />}
               <span>Verify Seats & Pre-Select Previous Seat</span>
             </button>
           </div>
@@ -886,26 +872,26 @@ Thank you for continuing your study with ${library.name}!`;
 
         {/* STEP 3: SEAT ALLOCATION ENGINE */}
         {currentStep === 3 && (
-          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-4 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <LuGrid2X2 className="w-5 h-5 text-blue-400" /> Renewal Seat Matrix
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <LuGrid2X2 className="w-5 h-5 text-blue-400 shrink-0" /> Renewal Seat Matrix
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-[10px] sm:text-xs text-slate-400 mt-1">
                   Window: {formatReadableDate(startDate)} to {formatReadableDate(endDate)} ({selectedShiftIds.length} Shift{selectedShiftIds.length > 1 ? 's' : ''})
                 </p>
               </div>
 
-              <label className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer">
+              <label className="flex items-center gap-2 bg-slate-800/80 px-3 py-2 sm:py-1.5 rounded-xl border border-slate-700 cursor-pointer w-full sm:w-auto justify-center">
                 <input
                   type="checkbox"
                   checked={assignSeatLater}
                   onChange={(e) => setAssignSeatLater(e.target.checked)}
                   className="rounded bg-[#080C14] border-slate-700 text-blue-600 focus:ring-0"
                 />
-                <span className="text-xs text-slate-300 font-bold uppercase">
-                  Floating Member (Assign Seat Later)
+                <span className="text-[10px] sm:text-xs text-slate-300 font-bold uppercase truncate">
+                  Floating Member (Assign Later)
                 </span>
               </label>
             </div>
@@ -914,24 +900,24 @@ Thank you for continuing your study with ${library.name}!`;
               <div className="space-y-6">
                 {hasContinuousSeat ? (
                   <div className="space-y-4">
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex items-start gap-3">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 p-3 sm:p-4 rounded-2xl flex items-start gap-3">
                       <LuCheckCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                       <div>
-                        <div className="text-emerald-400 font-bold text-xs uppercase">
+                        <div className="text-emerald-400 font-bold text-[11px] sm:text-xs uppercase">
                           Continuous Single Seat Available!
                         </div>
-                        <div className="text-xs text-slate-300 mt-0.5">
+                        <div className="text-[10px] sm:text-xs text-slate-300 mt-0.5">
                           Select one continuous seat below for all {selectedShiftIds.length} requested shift(s):
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-[#080C14] border border-slate-800 p-5 rounded-2xl space-y-3">
-                      <label className="block text-xs uppercase font-bold text-blue-400">
+                    <div className="bg-[#080C14] border border-slate-800 p-4 sm:p-5 rounded-2xl space-y-3">
+                      <label className="block text-[10px] sm:text-xs uppercase font-bold text-blue-400">
                         Choose Available Continuous Seat:
                       </label>
 
-                      <div className="max-h-80 overflow-y-auto pr-2 space-y-2.5 custom-scrollbar">
+                      <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2.5 custom-scrollbar">
                         {continuousSeats.map((seat) => {
                           const firstShiftId = selectedShiftIds[0];
                           const prevSeat = previousSeatsMap[firstShiftId];
@@ -948,62 +934,60 @@ Thank you for continuing your study with ${library.name}!`;
                                 });
                                 setChosenAllocations(updatedMap);
                               }}
-                              className={`cursor-pointer p-3.5 rounded-2xl border transition-all flex items-center justify-between ${
+                              className={`cursor-pointer p-3 sm:p-3.5 rounded-2xl border transition-all flex items-center justify-between ${
                                 isSelected
                                   ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
                                   : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                               }`}
                             >
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 sm:gap-3 w-full pr-2">
                                 <div
-                                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-bold text-sm ${
-                                    isSelected
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-slate-800 text-slate-300'
+                                  className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-mono font-bold text-xs sm:text-sm ${
+                                    isSelected ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'
                                   }`}
                                 >
                                   #{seat.seatNumber}
                                 </div>
 
-                                <div>
-                                  <div className="font-bold text-xs text-white flex items-center gap-2">
-                                    <span>{seat.roomName}</span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-[11px] sm:text-xs text-white flex flex-wrap items-center gap-1.5">
+                                    <span className="truncate">{seat.roomName}</span>
                                     {isPrevious && (
-                                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[10px] uppercase font-bold">
-                                        ⭐ Student Previous Seat
+                                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[9px] uppercase font-bold whitespace-nowrap">
+                                        ⭐ Previous Seat
                                       </span>
                                     )}
                                   </div>
 
-                                  <div className="flex items-center gap-2 text-[10px] mt-1 text-slate-400">
-                                    <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 flex items-center gap-1">
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[9px] sm:text-[10px] mt-1 text-slate-400">
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700">
                                       {seat.genderType === 'male' && '👨 Boys Only'}
                                       {seat.genderType === 'female' && '👩 Girls Only'}
                                       {(!seat.genderType || seat.genderType === 'all') && '👫 Unisex'}
                                     </span>
 
                                     {seat.nearAc && (
-                                      <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center gap-1 font-bold">
-                                        <LuSnowflake className="w-3 h-3" /> Near AC
+                                      <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 font-bold flex items-center gap-0.5">
+                                        <LuSnowflake className="w-2.5 h-2.5" /> AC
                                       </span>
                                     )}
 
                                     {seat.chargingPoint && (
-                                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1 font-bold">
-                                        <LuZap className="w-3 h-3" /> Power Plug
+                                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold flex items-center gap-0.5">
+                                        <LuZap className="w-2.5 h-2.5" /> Plug
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2">
+                              <div className="shrink-0">
                                 {isSelected ? (
-                                  <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                                    <LuCheck className="w-4 h-4" />
+                                  <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                                    <LuCheck className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </div>
                                 ) : (
-                                  <div className="w-6 h-6 rounded-full border border-slate-700" />
+                                  <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-slate-700" />
                                 )}
                               </div>
                             </div>
@@ -1014,19 +998,19 @@ Thank you for continuing your study with ${library.name}!`;
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-start gap-3">
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-3 sm:p-4 rounded-2xl flex items-start gap-3">
                       <LuBug className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                       <div>
-                        <div className="text-amber-400 font-bold text-xs uppercase">
+                        <div className="text-amber-400 font-bold text-[11px] sm:text-xs uppercase">
                           Minimal Seat Swap Suggested
                         </div>
-                        <div className="text-xs text-slate-300 mt-0.5">
+                        <div className="text-[10px] sm:text-xs text-slate-300 mt-0.5">
                           No single continuous seat is available across all shifts. Select seats for each shift below:
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-6">
+                    <div className="space-y-4 sm:space-y-6">
                       {selectedShiftIds.map((sId) => {
                         const shiftObj = library?.shifts.find((s) => s.id === sId);
                         const avail = availabilityPerShift[sId] || [];
@@ -1034,14 +1018,14 @@ Thank you for continuing your study with ${library.name}!`;
                         const isPrevFree = prevSeat && avail.some((s) => s.id === prevSeat.seatId);
 
                         return (
-                          <div key={sId} className="bg-[#080C14] border border-slate-800 p-5 rounded-2xl space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                          <div key={sId} className="bg-[#080C14] border border-slate-800 p-3 sm:p-5 rounded-2xl space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4">
+                              <span className="text-[11px] sm:text-xs font-bold text-blue-400 uppercase tracking-wider">
                                 {shiftObj?.name} ({shiftObj?.startTime} – {shiftObj?.endTime})
                               </span>
                               {prevSeat && (
                                 <span
-                                  className={`text-[11px] font-bold ${
+                                  className={`text-[9px] sm:text-[11px] font-bold ${
                                     isPrevFree ? 'text-emerald-400' : 'text-amber-400'
                                   }`}
                                 >
@@ -1052,7 +1036,7 @@ Thank you for continuing your study with ${library.name}!`;
                               )}
                             </div>
 
-                            <div className="max-h-64 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                            <div className="max-h-60 overflow-y-auto pr-1 space-y-2 custom-scrollbar">
                               {avail.map((seat) => {
                                 const isPrevious = prevSeat && prevSeat.seatId === seat.id;
                                 const isSelected = chosenAllocations[sId] === seat.id;
@@ -1066,56 +1050,56 @@ Thank you for continuing your study with ${library.name}!`;
                                         [sId]: seat.id,
                                       })
                                     }
-                                    className={`cursor-pointer p-3 rounded-xl border transition-all flex items-center justify-between ${
+                                    className={`cursor-pointer p-2.5 sm:p-3 rounded-xl border transition-all flex items-center justify-between ${
                                       isSelected
                                         ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
                                         : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                                     }`}
                                   >
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 sm:gap-3 w-full pr-2">
                                       <div
-                                        className={`w-8 h-8 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
-                                          isSelected
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-slate-800 text-slate-300'
+                                        className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center font-mono font-bold text-xs sm:text-sm ${
+                                          isSelected ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'
                                         }`}
                                       >
                                         #{seat.seatNumber}
                                       </div>
 
-                                      <div>
-                                        <div className="font-bold text-xs text-white flex items-center gap-2">
-                                          <span>{seat.roomName}</span>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="font-bold text-[10px] sm:text-xs text-white flex flex-wrap items-center gap-1.5">
+                                          <span className="truncate">{seat.roomName}</span>
                                           {isPrevious && (
-                                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[10px] uppercase font-bold">
-                                              ⭐ Previous Seat
+                                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[8px] sm:text-[9px] uppercase font-bold whitespace-nowrap">
+                                              ⭐ Prev Seat
                                             </span>
                                           )}
                                         </div>
 
-                                        <div className="flex items-center gap-2 text-[10px] mt-1 text-slate-400">
-                                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                                        <div className="flex flex-wrap items-center gap-1 text-[8px] sm:text-[10px] mt-0.5 text-slate-400">
+                                          <span className="px-1 py-0.5 rounded bg-slate-800 text-slate-300">
                                             {seat.genderType === 'male' && '👨 Boy'}
                                             {seat.genderType === 'female' && '👩 Girl'}
                                             {(!seat.genderType || seat.genderType === 'all') && '👫 Unisex'}
                                           </span>
 
                                           {seat.nearAc && (
-                                            <span className="text-cyan-400 font-bold flex items-center gap-0.5">
-                                              <LuSnowflake className="w-3 h-3" /> Near AC
+                                            <span className="text-cyan-400 font-bold flex items-center gap-0.5 px-1 bg-cyan-900/20 rounded">
+                                              <LuSnowflake className="w-2.5 h-2.5" /> AC
                                             </span>
                                           )}
 
                                           {seat.chargingPoint && (
-                                            <span className="text-emerald-400 font-bold flex items-center gap-0.5">
-                                              <LuZap className="w-3 h-3" /> Power
+                                            <span className="text-emerald-400 font-bold flex items-center gap-0.5 px-1 bg-emerald-900/20 rounded">
+                                              <LuZap className="w-2.5 h-2.5" /> Plug
                                             </span>
                                           )}
                                         </div>
                                       </div>
                                     </div>
 
-                                    {isSelected && <LuCheck className="w-4 h-4 text-blue-400" />}
+                                    <div className="shrink-0">
+                                      {isSelected && <LuCheck className="w-4 h-4 text-blue-400" />}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1129,16 +1113,16 @@ Thank you for continuing your study with ${library.name}!`;
               </div>
             )}
 
-            <div className="flex gap-4 pt-4 border-t border-slate-800">
+            <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 pt-4 border-t border-slate-800">
               <button
                 onClick={() => setCurrentStep(2)}
-                className="w-1/2 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase rounded-xl"
+                className="w-full sm:w-1/2 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] sm:text-xs uppercase rounded-xl transition-all"
               >
                 Back to Plan
               </button>
               <button
                 onClick={() => setCurrentStep(4)}
-                className="w-1/2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase rounded-xl shadow-lg shadow-blue-600/30"
+                className="w-full sm:w-1/2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] sm:text-xs uppercase rounded-xl shadow-lg shadow-blue-600/30 transition-all"
               >
                 Proceed to Payment
               </button>
@@ -1148,28 +1132,28 @@ Thank you for continuing your study with ${library.name}!`;
 
         {/* STEP 4: PAYMENT */}
         {currentStep === 4 && (
-          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <LuCreditCard className="w-5 h-5 text-blue-400" /> Renewal Payment
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-4 sm:p-8 space-y-6">
+            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <LuCreditCard className="w-5 h-5 text-blue-400 shrink-0" /> Renewal Payment
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs uppercase text-slate-300 mb-1">Payment Amount (INR)</label>
+                <label className="block text-[10px] sm:text-xs uppercase text-slate-300 mb-1">Payment Amount (INR)</label>
                 <input
                   type="number"
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-3 sm:py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase text-slate-300 mb-1">Payment Mode</label>
+                <label className="block text-[10px] sm:text-xs uppercase text-slate-300 mb-1">Payment Mode</label>
                 <select
                   value={paymentType}
                   onChange={(e: any) => setPaymentType(e.target.value)}
-                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-3 sm:py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="upi">UPI / Online</option>
                   <option value="cash">Cash</option>
@@ -1178,29 +1162,29 @@ Thank you for continuing your study with ${library.name}!`;
             </div>
 
             <div>
-              <label className="block text-xs uppercase text-slate-300 mb-1">Payment Remarks</label>
+              <label className="block text-[10px] sm:text-xs uppercase text-slate-300 mb-1">Payment Remarks</label>
               <input
                 type="text"
                 placeholder="e.g. Renewal GPay #204"
                 value={paymentRemarks}
                 onChange={(e) => setPaymentRemarks(e.target.value)}
-                className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-3 sm:py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
               />
             </div>
 
-            <div className="flex gap-4 pt-4 border-t border-slate-800">
+            <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 pt-4 border-t border-slate-800">
               <button
                 onClick={() => setCurrentStep(3)}
-                className="w-1/2 py-3.5 bg-slate-800 text-slate-300 font-bold text-xs uppercase rounded-xl"
+                className="w-full sm:w-1/2 py-3.5 bg-slate-800 text-slate-300 hover:bg-slate-700 font-bold text-[11px] sm:text-xs uppercase rounded-xl transition-all"
               >
                 Back
               </button>
               <button
                 onClick={handleSubmitRenewal}
                 disabled={submitting}
-                className="w-1/2 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2"
+                className="w-full sm:w-1/2 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] sm:text-xs uppercase rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/30"
               >
-                {submitting ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuCheck className="w-4 h-4" />}
+                {submitting ? <LuRefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <LuCheck className="w-4 h-4 shrink-0" />}
                 <span>Confirm Renewal (₹{paymentAmount})</span>
               </button>
             </div>
@@ -1209,75 +1193,76 @@ Thank you for continuing your study with ${library.name}!`;
 
         {/* STEP 5: RECEIPT */}
         {currentStep === 5 && completedRenewal && (
-          <div className="bg-slate-900/60 border border-slate-800/90 rounded-3xl p-6 sm:p-10 backdrop-blur-xl space-y-8 max-w-3xl mx-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-6">
+          <div className="bg-slate-900/60 border border-slate-800/90 rounded-3xl p-5 sm:p-10 backdrop-blur-xl space-y-6 sm:space-y-8 max-w-3xl mx-auto">
+            
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-slate-800 pb-5 sm:pb-6 w-full">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <div className="w-12 h-12 shrink-0 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                   <LuShieldCheck className="w-6 h-6" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white">Renewal Confirmed!</h2>
-                  <p className="text-xs text-emerald-400 font-mono">Membership Extended</p>
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Renewal Confirmed!</h2>
+                  <p className="text-[10px] sm:text-xs text-emerald-400 font-mono">Membership Extended</p>
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 md:flex md:flex-row gap-3 w-full md:w-auto">
                 <button
                   onClick={printOrSavePdf}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 flex items-center gap-2"
+                  className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] sm:text-xs font-bold border border-slate-700 transition-all"
                 >
-                  <LuPrinter className="w-4 h-4 text-blue-400" />
-                  <span>Print / PDF</span>
+                  <LuPrinter className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span className="truncate">Print / PDF</span>
                 </button>
                 <button
                   onClick={shareWhatsAppReceipt}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-bold transition-all shadow-lg shadow-emerald-600/30"
                 >
-                  <LuShare2 className="w-4 h-4" />
-                  <span>Share WhatsApp</span>
+                  <LuShare2 className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Share WhatsApp</span>
                 </button>
               </div>
             </div>
 
             {/* RECEIPT CARD */}
-            <div className="bg-[#080C14] border border-slate-800 rounded-2xl p-6 space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="bg-[#080C14] border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-5 sm:space-y-6">
+              <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3 border-b border-slate-800 pb-4">
                 <div>
-                  <span className="text-xs text-slate-400 uppercase font-bold block">{library?.name}</span>
-                  <span className="text-[10px] text-slate-500">{library?.address}</span>
+                  <span className="text-[11px] sm:text-xs text-slate-400 uppercase font-bold block">{library?.name}</span>
+                  <span className="text-[9px] sm:text-[10px] text-slate-500 leading-tight block max-w-[200px]">{library?.address}</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold">Renewal ID</span>
-                  <span className="text-base font-extrabold text-blue-400 font-mono bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-xl inline-block mt-0.5">
+                <div className="xs:text-right">
+                  <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase block font-bold">Renewal ID</span>
+                  <span className="text-sm sm:text-base font-extrabold text-blue-400 font-mono bg-blue-500/10 border border-blue-500/30 px-2 sm:px-3 py-1 rounded-lg sm:rounded-xl inline-block mt-0.5">
                     #{completedRenewal.membership.id}
                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pb-4 border-b border-slate-800">
-                <div><span className="text-slate-500 uppercase block">Student Name</span><span className="text-white font-bold text-sm">{completedRenewal.student.name}</span></div>
-                <div><span className="text-slate-500 uppercase block">Father's Name</span><span className="text-white font-bold text-sm">{completedRenewal.student.fathersName}</span></div>
-                <div><span className="text-slate-500 uppercase block">Contact Phone</span><span className="text-slate-300 font-mono">{completedRenewal.student.phone}</span></div>
-                <div><span className="text-slate-500 uppercase block">Address</span><span className="text-slate-300">{completedRenewal.student.address}</span></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-[11px] sm:text-xs pb-4 border-b border-slate-800">
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Student Name</span><span className="text-white font-bold text-xs sm:text-sm">{completedRenewal.student.name}</span></div>
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Father's Name</span><span className="text-white font-bold text-xs sm:text-sm">{completedRenewal.student.fathersName}</span></div>
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Contact Phone</span><span className="text-slate-300 font-mono">{completedRenewal.student.phone}</span></div>
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Address</span><span className="text-slate-300">{completedRenewal.student.address}</span></div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pb-4 border-b border-slate-800">
-                <div><span className="text-slate-500 uppercase block">Renewal Start</span><span className="text-emerald-400 font-bold text-sm font-mono">{formatReadableDate(completedRenewal.membership.startDate)}</span></div>
-                <div><span className="text-slate-500 uppercase block">Renewal End</span><span className="text-emerald-400 font-bold text-sm font-mono">{formatReadableDate(completedRenewal.membership.endDate)}</span></div>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 text-[11px] sm:text-xs pb-4 border-b border-slate-800">
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Renewal Start</span><span className="text-emerald-400 font-bold text-xs sm:text-sm font-mono">{formatReadableDate(completedRenewal.membership.startDate)}</span></div>
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Renewal End</span><span className="text-emerald-400 font-bold text-xs sm:text-sm font-mono">{formatReadableDate(completedRenewal.membership.endDate)}</span></div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                <div><span className="text-slate-500 uppercase block">Amount Paid</span><span className="text-emerald-400 font-extrabold text-base">₹{completedRenewal.payment.amount}</span></div>
-                <div><span className="text-slate-500 uppercase block">Payment Mode</span><span className="text-slate-300 uppercase font-bold">{completedRenewal.payment.paymentType}</span></div>
-                <div><span className="text-slate-400 font-mono">{completedRenewal.payment.remarks || 'N/A'}</span></div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-[11px] sm:text-xs">
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Amount Paid</span><span className="text-emerald-400 font-extrabold text-sm sm:text-base">₹{completedRenewal.payment.amount}</span></div>
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Payment Mode</span><span className="text-slate-300 uppercase font-bold">{completedRenewal.payment.paymentType}</span></div>
+                <div><span className="text-slate-500 uppercase block text-[9px] sm:text-[10px] mb-0.5">Remarks</span><span className="text-slate-400 font-mono">{completedRenewal.payment.remarks || 'N/A'}</span></div>
               </div>
             </div>
 
             <button
               onClick={() => navigate(`/library/${id}`)}
-              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2"
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-[11px] sm:text-xs uppercase rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/30 tracking-widest"
             >
-              <LuLayoutDashboard className="w-4 h-4" />
+              <LuLayoutDashboard className="w-4 h-4 shrink-0" />
               <span>Return to Branch Dashboard</span>
             </button>
           </div>
