@@ -8,6 +8,7 @@ import { ToastContainer } from "react-toastify";
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+
     <App />
 
  <ToastContainer
@@ -22,5 +23,6 @@ createRoot(document.getElementById('root')!).render(
     stacked
     limit={3}
 />
-  </StrictMode>,
+
+ </StrictMode>
 )

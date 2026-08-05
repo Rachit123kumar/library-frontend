@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Footer from '../components/Footer';
-import Navbar from '../components/Navbar';
 import {
   LuBookOpen,
   LuUsers,
@@ -16,16 +15,55 @@ import {
   LuShieldCheck,
   LuCheck,
   LuChevronRight,
- 
   LuZap,
   LuHeadphones,
-  LuDollarSign
+  LuDollarSign,
+  LuUser
 } from 'react-icons/lu';
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 
+interface UserData {
+  id?: string;
+  name?: string;
+  fullName?: string;
+  email?: string;
+}
 
 export default function Page(): React.JSX.Element {
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(0);
+  const [user, setUser] = useState<UserData | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Fetch logged in user data
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/auth/me`, {
+          method: 'GET',
+          credentials: 'include',
+           headers: {
+          'Content-Type': 'application/json',
+          
+      }
+        
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setUser(data.user);
+          }
+        }
+      } catch (err) {
+        console.error('User is not authenticated', err);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
 
   const featuresList = [
     { title: "Student Management", desc: "Track complete student profiles, identity documents, contact info, and attendance records.", icon: LuUsers, color: "from-blue-500 to-indigo-500" },
@@ -76,13 +114,47 @@ export default function Page(): React.JSX.Element {
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293d12_1px,transparent_1px),linear-gradient(to_bottom,#1f293d12_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[450px] bg-gradient-to-b from-blue-600/20 via-indigo-600/10 to-transparent blur-[120px] pointer-events-none rounded-full" />
 
-      {/* Navigation Header */}
-      <Navbar />
+      {/* Dynamic Navigation Header */}
+      <nav className="relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-between">
+        <div className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-3">
+          <div className="w-9 h-9 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-center">
+            <LuBookOpen className="w-5 h-5 text-blue-400" />
+          </div>
+          <span>ARA<span className="text-blue-500">Library</span></span>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          {!authLoading && (
+            user ? (
+              <div className="flex items-center gap-4">
+                <div className="hidden sm:flex items-center gap-2 text-sm font-medium text-slate-300 bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                  <LuUser className="w-4 h-4 text-slate-400" />
+                  <span>{user.name || user.fullName}</span>
+                </div>
+                <Link 
+                  to="/me" 
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center gap-2"
+                >
+                  Console
+                  <LuChevronRight className="w-4 h-4" />
+                </Link>
+              </div>
+            ) : (
+              <Link 
+                to="/signin" 
+                className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm"
+              >
+                Sign In
+              </Link>
+            )
+          )}
+        </div>
+      </nav>
 
       {/* Main Content View */}
       <main className="relative z-10">
         {/* Hero Section */}
-        <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <section className="relative pt-8 pb-20 md:pt-16 md:pb-28 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
             
             {/* Hero Text */}
@@ -105,17 +177,11 @@ export default function Page(): React.JSX.Element {
 
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
                 <Link 
-                  to="/admission" 
+                  to={user ? "/me" : "/signin"} 
                   className="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 border border-blue-400/30"
                 >
-                  <span>Start Free Trial</span>
+                  <span>{user ? "Open Console" : "Get Started"}</span>
                   <LuChevronRight className="w-4 h-4" />
-                </Link>
-                <Link 
-                  to="/renew" 
-                  className="w-full sm:w-auto px-8 py-3.5 bg-slate-900/90 hover:bg-slate-800/90 text-slate-200 font-semibold rounded-xl text-sm border border-slate-800 transition-all text-center"
-                >
-                  View Pricing
                 </Link>
               </div>
 
@@ -241,8 +307,8 @@ export default function Page(): React.JSX.Element {
                   <li className="flex items-center gap-2.5"><LuCheck className="w-4 h-4 text-blue-400 shrink-0" /> No Credit Card Required</li>
                 </ul>
               </div>
-              <Link to="/admission" className="mt-8 block text-center w-full py-3 px-4 rounded-xl border border-slate-700 bg-slate-800 text-white font-semibold text-xs hover:bg-slate-700">
-                Start Free Trial
+              <Link to={user ? "/me" : "/signin"} className="mt-8 block text-center w-full py-3 px-4 rounded-xl border border-slate-700 bg-slate-800 text-white font-semibold text-xs hover:bg-slate-700">
+                {user ? "Open Console" : "Start Free Trial"}
               </Link>
             </div>
 
@@ -257,8 +323,8 @@ export default function Page(): React.JSX.Element {
                   <li className="flex items-center gap-2.5"><LuCheck className="w-4 h-4 text-indigo-400 shrink-0" /> Payment & Cash/UPI Tracking</li>
                 </ul>
               </div>
-              <Link to="/renew" className="mt-8 block text-center w-full py-3 px-4 rounded-xl border border-slate-700 bg-slate-800 text-white font-semibold text-xs hover:bg-slate-700">
-                Choose Monthly
+              <Link to={user ? "/me" : "/signin"} className="mt-8 block text-center w-full py-3 px-4 rounded-xl border border-slate-700 bg-slate-800 text-white font-semibold text-xs hover:bg-slate-700">
+                {user ? "Open Console" : "Choose Monthly"}
               </Link>
             </div>
 
@@ -274,8 +340,8 @@ export default function Page(): React.JSX.Element {
                   <li className="flex items-center gap-2.5"><LuCheck className="w-4 h-4 text-blue-400 shrink-0" /> Save 2 Months Annual Fee</li>
                 </ul>
               </div>
-              <Link to="/renew" className="mt-8 block text-center w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30">
-                Get Started Yearly
+              <Link to={user ? "/me" : "/signin"} className="mt-8 block text-center w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30">
+                {user ? "Open Console" : "Get Started Yearly"}
               </Link>
             </div>
           </div>

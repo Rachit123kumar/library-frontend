@@ -47,7 +47,7 @@ const Navbar: React.FC = () => {
         {/* Action CTAs */}
         <div className="hidden sm:flex items-center space-x-3">
           <Link 
-            to="/dashboard" 
+            to="/signin" 
             className="text-xs font-semibold uppercase tracking-wider text-slate-300 hover:text-white px-3.5 py-2 transition-colors"
           >
             Sign In

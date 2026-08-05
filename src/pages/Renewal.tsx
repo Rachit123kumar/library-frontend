@@ -1,795 +1,1286 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 import {
-  LuSearch,
-  LuUser,
-  LuPhone,
-  LuCalendar,
+  LuCreditCard,
+  LuGrid2X2,
+  LuArrowLeft,
+  LuCheck,
   LuRefreshCw,
-  LuTriangleAlert ,
-  LuCheck ,
-  LuX,
-  LuArmchair,
+  LuSparkles,
+  LuPrinter,
   LuShieldCheck,
-  LuRepeat,
+  LuShare2,
+  LuSearch,
+  LuBookmarkCheck,
+  LuHistory,
+  LuClock,
+  LuCalendar,
+  LuCheckCheck,
+  LuBug,
   LuZap,
-  LuArrowRight,
-  LuLoader,
-  LuCreditCard
+  LuSnowflake,
+  LuLayoutDashboard,
 } from 'react-icons/lu';
-import Navbar from '../components/Navbar';
+import LibrarySidebar from '../components/LibrarySideBar';
 
-interface FoundStudent {
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+
+interface Shift {
+  id: number;
+  name: string;
+  startTime: string;
+  endTime: string;
+  price: number;
+}
+
+interface LibraryData {
+  id: number;
+  name: string;
+  address: string;
+  holdDays: number;
+  shifts: Shift[];
+}
+
+interface StudentSearchResult {
   id: number;
   name: string;
   fathersName: string;
   phone: string;
+  email?: string;
+  address: string;
+  memberships: Array<{
+    id: number;
+    startDate: string;
+    endDate: string;
+    bookings: Array<{
+      id: number;
+      seatId: number;
+      shiftId: number;
+      seat?: {
+        id: number;
+        seatNumber: number;
+        roomId: number;
+        nearAc?: boolean;
+        chargingPoint?: boolean;
+        genderType?: string;
+        room?: {
+          name: string;
+        } | null;
+      } | null;
+      shift?: {
+        id: number;
+        name: string;
+        startTime: string;
+        endTime: string;
+      } | null;
+    }>;
+  }>;
 }
 
-interface Seat {
+interface SeatOption {
   id: number;
   seatNumber: number;
-  room?: { name: string };
+  roomName: string;
+  nearAc?: boolean;
+  chargingPoint?: boolean;
+  genderType?: string;
+  totalDailyBookings: number;
 }
 
-interface SplitShiftOption {
-  shiftId: number;
-  freeSeats: Seat[];
+interface RenewalResponse {
+  student: {
+    id: number;
+    name: string;
+    fathersName: string;
+    phone: string;
+    address: string;
+  };
+  membership: {
+    id: number;
+    startDate: string;
+    endDate: string;
+  };
+  bookings: Array<{
+    id: number;
+    seatId: number;
+    shiftId: number;
+    shiftPrice: number;
+  }>;
+  payment: {
+    id: number;
+    amount: number;
+    paymentType: string;
+    remarks?: string;
+  };
 }
 
-interface RenewalStatusResponse {
-  success: boolean;
-  previousSeatId: number | null;
-  previousSeatNumber: number | null;
-  suggestedStartDate: string;
-  todayDate: string;
+function formatReadableDate(dateInput?: string | Date | null): string {
+  if (!dateInput) return 'N/A';
+  try {
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) return 'Invalid Date';
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return 'N/A';
+  }
 }
-
-interface AvailabilityResponse {
-  success: boolean;
-  isSplitCombo: boolean;
-  availableSeats?: Seat[];
-  splitOptions?: SplitShiftOption[];
-}
-
-// const BASE_URL = import.meta.env.VITE_API_URL || 'https://api.libdesk.online';
-const BASE_URL =  'https://api.libdesk.online';
 
 export default function RenewalPage(): React.JSX.Element {
-  // Search state variables
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
+  const [library, setLibrary] = useState<LibraryData | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<FoundStudent[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<FoundStudent | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<StudentSearchResult[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<StudentSearchResult | null>(null);
 
-  // Form parameters
-  const [startDate, setStartDate] = useState('');
-  const [durationMonths, setDurationMonths] = useState('1');
-  const [endDate, setEndDate] = useState('');
-  const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
-  const [paymentInfo, setPaymentInfo] = useState({ amount: '', paymentType: 'cash', remarks: '' });
-
-  // Strategy and seat check states
-  const [dateStrategy, setDateStrategy] = useState<'continuous' | 'today' | 'custom'>('continuous');
-  const [checkingStudentHistory, setCheckingStudentHistory] = useState(false);
-  const [checkingSeatAvailability, setCheckingSeatAvailability] = useState(false);
-  
-  const [renewalStatus, setRenewalStatus] = useState<RenewalStatusResponse | null>(null);
-  const [availabilityData, setAvailabilityData] = useState<AvailabilityResponse | null>(null);
-  
-  const [isPreviousSeatFree, setIsPreviousSeatFree] = useState<boolean | null>(null);
-  const [wantDifferentSeat, setWantDifferentSeat] = useState(false);
-  const [selectedSingleSeatId, setSelectedSingleSeatId] = useState('');
-  const [splitSeatSelections, setSplitSeatSelections] = useState<Record<number, number>>({});
-  const [isDateOverlappingActivePlan, setIsDateOverlappingActivePlan] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [renewalType, setRenewalType] = useState<'continuous' | 'custom'>('continuous');
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(todayStr);
+  const [durationMonths, setDurationMonths] = useState<number>(1);
+  const [endDate, setEndDate] = useState('');
 
-  const showToast = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
+  const [previousSeatsMap, setPreviousSeatsMap] = useState<
+    Record<number, { seatId: number; seatNumber: number; roomName: string }>
+  >({});
+
+  const [selectedShiftIds, setSelectedShiftIds] = useState<number[]>([]);
+  const [assignSeatLater, setAssignSeatLater] = useState<boolean>(false);
+  const [checkingAvailability, setCheckingAvailability] = useState<boolean>(false);
+  const [hasContinuousSeat, setHasContinuousSeat] = useState<boolean>(false);
+  const [continuousSeats, setContinuousSeats] = useState<SeatOption[]>([]);
+  const [availabilityPerShift, setAvailabilityPerShift] = useState<Record<number, SeatOption[]>>({});
+  const [chosenAllocations, setChosenAllocations] = useState<Record<number, number>>({});
+
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentType, setPaymentType] = useState<'cash' | 'upi'>('upi');
+  const [paymentRemarks, setPaymentRemarks] = useState('');
+  const [submitting, setSubmitting] = useState<boolean>(false);
+
+  const [completedRenewal, setCompletedRenewal] = useState<RenewalResponse | null>(null);
+
+  const showToast = (title: string, message: string, type: 'success' | 'error' = 'error') => {
     toast.dismiss();
     const content = (
-      <div className="pr-2">
-        <div className="font-bold font-mono text-xs uppercase tracking-wider text-white">{title}</div>
-        <div className="text-xs text-slate-300 mt-0.5 leading-relaxed">{message}</div>
+      <div>
+        <div className="font-bold text-xs font-mono uppercase tracking-wider text-white">{title}</div>
+        <div className="text-xs text-slate-300 mt-0.5">{message}</div>
       </div>
     );
-    const opts = { toastId: 'renew-single-toast', autoClose: 3000 };
-    if (type === 'success') toast.success(content, opts);
-    else if (type === 'error') toast.error(content, opts);
-    else toast.info(content, opts);
+    if (type === 'success') toast.success(content, { autoClose: 3500 });
+    else toast.error(content, { autoClose: 3500 });
   };
 
-  useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      if (searchQuery.trim().length >= 2) fetchStudents();
-      else setSearchResults([]);
-    }, 300);
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery]);
-
-  const fetchStudents = async () => {
+  const fetchLibraryDetails = async () => {
+    if (!id) return;
     try {
-      const res = await fetch(`${BASE_URL}/api/v1/students/search?name=${searchQuery}`);
-      if (!res.ok) throw new Error("Network response was not ok");
-      const result = await res.json();
-      if (result.success) setSearchResults(result.students);
-    } catch (err) {
-      console.warn("Using search fallback...", err);
-      setSearchResults([
-        { id: 101, name: 'Aman Sharma', fathersName: 'Rajesh Sharma', phone: '9876543210' },
-        { id: 102, name: 'Pooja Verma', fathersName: 'Sanjay Verma', phone: '9661056097' }
-      ].filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())));
-    }
-  };
-
-  useEffect(() => {
-    if (selectedStudent) {
-      fetchStudentRenewalHistory();
-    } else {
-      setRenewalStatus(null);
-      setAvailabilityData(null);
-      setIsPreviousSeatFree(null);
-    }
-  }, [selectedStudent]);
-
-  const fetchStudentRenewalHistory = async () => {
-    setCheckingStudentHistory(true);
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/renewals/check?studentId=${selectedStudent?.id}`);
-      if (!res.ok) throw new Error("Network response was not ok");
-      const result = await res.json();
-      if (result.success) {
-        setRenewalStatus(result);
-        setStartDate(result.suggestedStartDate);
-        setDateStrategy('continuous');
-      }
-    } catch (err) {
-      console.warn("Fallback for renewal history...", err);
-      const mockResult = {
-        success: true,
-        previousSeatId: 1,
-        previousSeatNumber: 15,
-        suggestedStartDate: '2026-07-28',
-        todayDate: todayStr
-      };
-      setRenewalStatus(mockResult);
-      setStartDate(mockResult.suggestedStartDate);
-      setDateStrategy('continuous');
-    } finally {
-      setCheckingStudentHistory(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!startDate) {
-      setEndDate('');
-      return;
-    }
-    const start = new Date(startDate);
-    start.setMonth(start.getMonth() + parseInt(durationMonths, 10));
-    setEndDate(start.toISOString().split('T')[0]);
-  }, [startDate, durationMonths]);
-
-  useEffect(() => {
-    if (!renewalStatus) return;
-    if (dateStrategy === 'continuous') setStartDate(renewalStatus.suggestedStartDate);
-    else if (dateStrategy === 'today') setStartDate(renewalStatus.todayDate);
-    else setStartDate('');
-  }, [dateStrategy]);
-
-  useEffect(() => {
-    if (!renewalStatus || !startDate) {
-      setIsDateOverlappingActivePlan(false);
-      return;
-    }
-    const selectedStartMs = new Date(`${startDate}T00:00:00`).getTime();
-    const activeEnd = new Date(renewalStatus.suggestedStartDate);
-    activeEnd.setDate(activeEnd.getDate() - 1);
-    const activeEndMs = activeEnd.getTime();
-
-    if (selectedStartMs <= activeEndMs) {
-      setIsDateOverlappingActivePlan(true);
-    } else {
-      setIsDateOverlappingActivePlan(false);
-    }
-  }, [startDate, renewalStatus]);
-
-  useEffect(() => {
-    if (selectedStudent && startDate && endDate && selectedShifts.length > 0 && !isDateOverlappingActivePlan) {
-      checkLiveAvailability();
-    } else {
-      setAvailabilityData(null);
-      setIsPreviousSeatFree(null);
-    }
-  }, [startDate, endDate, selectedShifts, wantDifferentSeat, isDateOverlappingActivePlan]);
-
-  const checkLiveAvailability = async () => {
-    setCheckingSeatAvailability(true);
-    try {
-      const query = new URLSearchParams({
-        startDate,
-        endDate,
-        shifts: selectedShifts.join(','),
-        studentId: selectedStudent?.id.toString() || ''
-      }).toString();
-
-      const res = await fetch(`${BASE_URL}/api/v1/available?${query}`);
-      if (!res.ok) throw new Error("Network response was not ok");
-      const result = await res.json();
-      
-      if (result.success) {
-        setAvailabilityData(result);
-        if (renewalStatus?.previousSeatId) {
-          const foundFree = result.availableSeats?.some((s: Seat) => s.id === renewalStatus.previousSeatId);
-          setIsPreviousSeatFree(!!foundFree);
-        } else {
-          setIsPreviousSeatFree(false);
-        }
-      }
-    } catch (err) {
-      console.warn("Fallback for seat availability...", err);
-      setAvailabilityData({
-        success: true,
-        isSplitCombo: false,
-        availableSeats: [
-          { id: 1, seatNumber: 15, room: { name: 'Main Hall' } },
-          { id: 2, seatNumber: 22, room: { name: 'Silent Zone' } }
-        ]
+      const res = await fetch(`${BASE_URL}/api/v1/admission/${id}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
-      setIsPreviousSeatFree(true);
+      const data = await res.json();
+
+      if (res.status === 403) {
+        showToast('Access Denied', 'You are not authorized for this branch.', 'error');
+        navigate('/me');
+        return;
+      }
+      if (res.status === 401) {
+        showToast('Session Expired', 'Please sign in again.', 'error');
+        navigate('/signin');
+        return;
+      }
+      if (!res.ok) throw new Error(data?.message || 'Failed to load branch details');
+      setLibrary(data.library);
+    } catch (err: any) {
+      showToast('Error', err.message, 'error');
+    }
+  };
+
+  useEffect(() => {
+    fetchLibraryDetails();
+  }, [id]);
+const calculateEndDate = (start: string, months: number): string => {
+  const [y, m, d] = start.split('-').map(Number);
+  
+  // 1. Create the date object
+  const dateObj = new Date(y, m - 1, d);
+  
+  // 2. Add the requested number of months
+  dateObj.setMonth(dateObj.getMonth() + months);
+  
+  // 3. Subtract exactly 1 day so it ends on the last day of the cycle
+  dateObj.setDate(dateObj.getDate() - 1);
+  
+  // 4. Format securely back to YYYY-MM-DD (avoiding timezone bugs)
+  const finalYear = dateObj.getFullYear();
+  const finalMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const finalDay = String(dateObj.getDate()).padStart(2, '0');
+  
+  return `${finalYear}-${finalMonth}-${finalDay}`;
+};
+
+  const handleSearchStudents = async () => {
+    if (!searchQuery.trim()) return;
+    try {
+      setSearching(true);
+      const res = await fetch(
+        `${BASE_URL}/api/v1/renewals/${id}/renewals/search?query=${encodeURIComponent(searchQuery)}`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        }
+      );
+      const data = await res.json();
+
+      if (res.status === 403) {
+        showToast('Access Denied', 'Redirecting...', 'error');
+        navigate('/me');
+        return;
+      }
+      if (!res.ok) throw new Error(data?.message || 'Failed to search students');
+      setSearchResults(data.students || []);
+    } catch (err: any) {
+      showToast('Search Error', err.message, 'error');
     } finally {
-      setCheckingSeatAvailability(false);
+      setSearching(false);
     }
   };
 
-  const handleShiftToggle = (num: number) => {
-    setSelectedShifts(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num]);
-  };
+  const handleSelectStudent = (student: StudentSearchResult) => {
+    setSelectedStudent(student);
+    const lastMembership = student.memberships?.[0];
 
-  const handleSplitSelectionChange = (shiftId: number, seatIdStr: string) => {
-    setSplitSeatSelections(prev => ({ ...prev, [shiftId]: parseInt(seatIdStr, 10) }));
-  };
+    const prevMap: Record<number, { seatId: number; seatNumber: number; roomName: string }> = {};
 
-  const isFormValid = () => {
-    if (selectedShifts.length === 0 || !startDate || !endDate) return false;
-    if (isDateOverlappingActivePlan) return false;
-    if (!paymentInfo.amount) return false;
+    if (lastMembership) {
+      lastMembership.bookings?.forEach((b) => {
+        if (b.seat && b.seat.seatNumber !== undefined) {
+          prevMap[b.shiftId] = {
+            seatId: b.seatId,
+            seatNumber: b.seat.seatNumber,
+            roomName: b.seat.room?.name || 'Main Room',
+          };
+        }
+      });
 
-    if (!wantDifferentSeat && isPreviousSeatFree === true) return true;
+      const prevEnd = new Date(lastMembership.endDate);
+      prevEnd.setDate(prevEnd.getDate() + 1);
+      const nextStartStr = prevEnd.toISOString().split('T')[0];
 
-    if (availabilityData?.isSplitCombo) {
-      return selectedShifts.every(shiftId => !!splitSeatSelections[shiftId]);
+      setStartDate(nextStartStr);
+      setEndDate(calculateEndDate(nextStartStr, 1));
+
+      const prevShiftIds = lastMembership.bookings?.map((b) => b.shiftId) || [];
+      setSelectedShiftIds(prevShiftIds);
+      recalculateTotalPrice(prevShiftIds, 1);
+    } else {
+      setStartDate(todayStr);
+      setEndDate(calculateEndDate(todayStr, 1));
     }
-    return !!selectedSingleSeatId;
+
+    setPreviousSeatsMap(prevMap);
+    setCurrentStep(2);
   };
 
-  const handleRenewalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedStudent || !isFormValid()) {
-      showToast("Validation Error", "Please assign all required fields and seating mappings.", "error");
+  const handleDurationChange = (months: number) => {
+    setDurationMonths(months);
+    const newEnd = calculateEndDate(startDate, months);
+    setEndDate(newEnd);
+    recalculateTotalPrice(selectedShiftIds, months);
+  };
+
+  const handleStartDateChange = (newStart: string) => {
+    setStartDate(newStart);
+    const newEnd = calculateEndDate(newStart, durationMonths);
+    setEndDate(newEnd);
+  };
+
+  const toggleShiftSelection = (shiftId: number) => {
+    let updated: number[];
+    if (selectedShiftIds.includes(shiftId)) {
+      updated = selectedShiftIds.filter((s) => s !== shiftId);
+    } else {
+      updated = [...selectedShiftIds, shiftId];
+    }
+    setSelectedShiftIds(updated);
+    recalculateTotalPrice(updated, durationMonths);
+  };
+
+  const recalculateTotalPrice = (shiftIds: number[], months: number) => {
+    if (!library) return;
+    const monthlyTotal = library.shifts
+      .filter((s) => shiftIds.includes(s.id))
+      .reduce((sum, s) => sum + s.price, 0);
+    setPaymentAmount(monthlyTotal * months);
+  };
+
+  const checkSeatAvailability = async () => {
+
+    if (!selectedStudent) {
+      showToast('Error', 'No student selected for renewal.', 'error');
       return;
     }
 
-    setSubmitting(true);
+
+    if (selectedShiftIds.length === 0) {
+      showToast('Validation Error', 'Please select at least one shift.', 'error');
+      return;
+    }
+
     try {
-      let finalSeatPayload = {};
-      
-      if (!wantDifferentSeat && isPreviousSeatFree === true && renewalStatus) {
-        finalSeatPayload = {
-          isSplit: false,
-          seatId: renewalStatus.previousSeatId,
-          shiftIds: selectedShifts
-        };
-      } else if (availabilityData?.isSplitCombo) {
-        finalSeatPayload = {
-          isSplit: true,
-          splitBookings: Object.entries(splitSeatSelections).map(([shiftId, seatId]) => ({
-            shiftId: parseInt(shiftId, 10),
-            seatId: seatId
-          }))
-        };
+      setCheckingAvailability(true);
+      const res = await fetch(
+        `${BASE_URL}/api/v1/admission/${id}/admissions/check-availability`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            startDate,
+            endDate,
+            shiftIds: selectedShiftIds,
+            excludeStudentId: selectedStudent.id
+          }),
+        }
+      );
+
+      const data = await res.json();
+      if (res.status === 403) {
+        showToast('Access Denied', 'Redirecting...', 'error');
+        navigate('/me');
+        return;
+      }
+      if (!res.ok) throw new Error(data?.message || 'Failed to check seat availability');
+
+      setHasContinuousSeat(data.hasContinuousSeat);
+      setContinuousSeats(data.continuousSeats || []);
+      setAvailabilityPerShift(data.availabilityPerShift || {});
+
+      const initialMap: Record<number, number> = {};
+
+      if (data.hasContinuousSeat && data.continuousSeats?.length > 0) {
+        const firstShiftId = selectedShiftIds[0];
+        const prevSeat = previousSeatsMap[firstShiftId];
+        const isPrevContinuous =
+          prevSeat && data.continuousSeats.some((s: SeatOption) => s.id === prevSeat.seatId);
+
+        const targetSeatId = isPrevContinuous ? prevSeat.seatId : data.continuousSeats[0].id;
+
+        selectedShiftIds.forEach((sId) => {
+          initialMap[sId] = targetSeatId;
+        });
       } else {
-        finalSeatPayload = {
-          isSplit: false,
-          seatId: parseInt(selectedSingleSeatId, 10),
-          shiftIds: selectedShifts
-        };
+        selectedShiftIds.forEach((sId) => {
+          const prevSeat = previousSeatsMap[sId];
+          const availList = data.availabilityPerShift?.[sId] || [];
+
+          if (prevSeat && availList.some((s: SeatOption) => s.id === prevSeat.seatId)) {
+            initialMap[sId] = prevSeat.seatId;
+          } else {
+            const recommended = data.recommendedCombination?.find((r: any) => r.shiftId === sId);
+            if (recommended) initialMap[sId] = recommended.seatId;
+          }
+        });
+      }
+
+      setChosenAllocations(initialMap);
+      setCurrentStep(3);
+    } catch (err: any) {
+      showToast('Availability Check Failed', err.message, 'error');
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
+
+  const handleSubmitRenewal = async () => {
+    if (!selectedStudent) return;
+    try {
+      setSubmitting(true);
+
+      let allocationsPayload: Array<{ shiftId: number; seatId: number }> = [];
+      if (!assignSeatLater) {
+        allocationsPayload = Object.entries(chosenAllocations).map(([sId, seatId]) => ({
+          shiftId: parseInt(sId, 10),
+          seatId,
+        }));
       }
 
       const payload = {
         studentId: selectedStudent.id,
         startDate,
         endDate,
-        ...finalSeatPayload,
-        ...paymentInfo
+        allocations: allocationsPayload.length > 0 ? allocationsPayload : undefined,
+        paymentAmount,
+        paymentType,
+        paymentRemarks: paymentRemarks || undefined,
       };
 
-      const response = await fetch(`${BASE_URL}/api/v1/renewals/execute`, {
+      const res = await fetch(`${BASE_URL}/api/v1/renewals/${id}/renewals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        credentials: 'include',
+        body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
-      if (response.ok && result.success) {
-        showToast("Renewal Successful", `Membership extended for ${selectedStudent.name}`, "success");
-        // Reset state
-        setSelectedStudent(null); setSearchQuery(''); setStartDate(''); setSelectedShifts([]);
-        setRenewalStatus(null); setAvailabilityData(null); setSelectedSingleSeatId('');
-        setSplitSeatSelections({}); setWantDifferentSeat(false);
-        setPaymentInfo({ amount: '', paymentType: 'cash', remarks: '' });
-      } else {
-        showToast("Renewal Failed", result.message || "Could not process transaction", "error");
+      const data = await res.json();
+      if (res.status === 403) {
+        showToast('Access Denied', 'Redirecting...', 'error');
+        navigate('/me');
+        return;
       }
-    } catch (err) {
-      console.warn("Offline save simulated...", err);
-      showToast("Renewal Saved Offline", `Simulated success for ${selectedStudent.name}`, "success");
-      setSelectedStudent(null); setSearchQuery('');
+      if (!res.ok) throw new Error(data?.message || 'Failed to process renewal.');
+
+      showToast('Renewal Success!', data.message, 'success');
+      setCompletedRenewal(data.data);
+      setCurrentStep(5);
+    } catch (err: any) {
+      showToast('Renewal Failed', err.message, 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const getActivePlanEndDateString = () => {
-    if (!renewalStatus) return '';
-    const activeEnd = new Date(renewalStatus.suggestedStartDate);
-    activeEnd.setDate(activeEnd.getDate() - 1);
-    return activeEnd.toISOString().split('T')[0];
+  const printOrSavePdf = () => {
+    if (!completedRenewal || !library) return;
+
+    const seatsFormatted =
+      completedRenewal.bookings?.length > 0
+        ? completedRenewal.bookings
+            .map((b) => {
+              const s = library.shifts.find((sh) => sh.id === b.shiftId);
+              return `<tr>
+                <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #1e293b;">
+                  ${s?.name || `Shift #${b.shiftId}`} (${s?.startTime || ''} - ${s?.endTime || ''})
+                </td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #2563eb; text-align: right;">
+                  Seat #${b.seatId}
+                </td>
+              </tr>`;
+            })
+            .join('')
+        : `<tr><td colspan="2" style="padding: 10px; border: 1px solid #e2e8f0; color: #d97706; text-align: center; font-weight: bold;">Floating Member — Pending Seat Assignment</td></tr>`;
+
+    const printWindow = window.open('', '_blank', 'width=800,height=900');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Renewal_Receipt_M#${completedRenewal.membership.id}_${completedRenewal.student.name}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 30px; color: #0f172a; background: #fff; }
+            .receipt-box { border: 2px solid #2563eb; border-radius: 12px; padding: 24px; max-width: 650px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 16px; margin-bottom: 20px; }
+            .title { font-size: 20px; font-weight: 800; color: #2563eb; margin: 0; }
+            .subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }
+            .badge { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-weight: bold; font-family: monospace; padding: 6px 12px; border-radius: 8px; font-size: 13px; text-align: right; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; font-size: 13px; }
+            .label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold; display: block; margin-bottom: 2px; }
+            .value { font-weight: bold; color: #0f172a; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+            .total-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
+            .total-amount { font-size: 18px; font-weight: 800; color: #16a34a; }
+            .footer { text-align: center; margin-top: 24px; font-size: 11px; color: #94a3b8; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-box">
+            <div class="header">
+              <div>
+                <h1 class="title">${library.name.toUpperCase()}</h1>
+                <div class="subtitle">${library.address}</div>
+              </div>
+              <div class="badge">RENEWAL ID: #${completedRenewal.membership.id}</div>
+            </div>
+
+            <div class="grid">
+              <div><span class="label">Student Name</span><span class="value">${completedRenewal.student.name}</span></div>
+              <div><span class="label">Father's Name</span><span class="value">${completedRenewal.student.fathersName}</span></div>
+              <div><span class="label">Phone</span><span class="value">${completedRenewal.student.phone}</span></div>
+              <div><span class="label">Address</span><span class="value">${completedRenewal.student.address}</span></div>
+            </div>
+
+            <div class="grid" style="background: #f8fafc; padding: 12px; border-radius: 8px;">
+              <div><span class="label">Renewed Start</span><span class="value" style="color: #16a34a;">${formatReadableDate(completedRenewal.membership.startDate)}</span></div>
+              <div><span class="label">Renewed End</span><span class="value" style="color: #16a34a;">${formatReadableDate(completedRenewal.membership.endDate)}</span></div>
+            </div>
+
+            <span class="label" style="margin-bottom: 6px;">Assigned Seats & Shifts</span>
+            <table><tbody>${seatsFormatted}</tbody></table>
+
+            <div class="total-box">
+              <div>
+                <span class="label">Payment Mode: ${completedRenewal.payment.paymentType.toUpperCase()}</span>
+                <span style="font-size: 11px; color: #64748b;">${completedRenewal.payment.remarks || 'Membership Renewal'}</span>
+              </div>
+              <div class="total-amount">₹${completedRenewal.payment.amount}</div>
+            </div>
+
+            <div class="footer">Thank you for renewing at ${library.name}!</div>
+          </div>
+          <script>window.onload = function() { window.print(); };</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
+  const shareWhatsAppReceipt = () => {
+    if (!completedRenewal || !library) return;
+
+    const formattedPhone = completedRenewal.student.phone.replace(/[^0-9]/g, '');
+    const targetPhone = formattedPhone.length === 10 ? `91${formattedPhone}` : formattedPhone;
+
+    const seatsFormatted =
+      completedRenewal.bookings?.length > 0
+        ? completedRenewal.bookings
+            .map((b) => {
+              const s = library.shifts.find((sh) => sh.id === b.shiftId);
+              return `• ${s?.name || 'Shift'}: Seat #${b.seatId}`;
+            })
+            .join('\n')
+        : '• Seat: Floating Member (Assign Later)';
+
+    const message = `🔄 *MEMBERSHIP RENEWED — ${library.name.toUpperCase()}* 🔄
+
+Hello *${completedRenewal.student.name}*, your membership has been successfully extended!
+
+🆔 *Renewal ID:* #${completedRenewal.membership.id}
+📅 *Valid Period:* ${formatReadableDate(completedRenewal.membership.startDate)} to ${formatReadableDate(completedRenewal.membership.endDate)}
+💳 *Amount Paid:* ₹${completedRenewal.payment.amount} (${completedRenewal.payment.paymentType.toUpperCase()})
+
+🪑 *Assigned Seats:*
+${seatsFormatted}
+
+Thank you for continuing your study with ${library.name}!`;
+
+    window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  const lastM = selectedStudent?.memberships?.[0];
+
   return (
-    <div className="min-h-screen bg-[#080C14] text-slate-100 font-sans antialiased selection:bg-blue-600 selection:text-white relative pb-28 overflow-x-hidden">
-      <Navbar/>
-      {/* Grid Pattern */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293d12_1px,transparent_1px),linear-gradient(to_bottom,#1f293d12_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[350px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent blur-[120px] pointer-events-none rounded-full" />
+    <div className="min-h-screen bg-[#080C14] text-slate-100 font-sans antialiased relative selection:bg-blue-600 selection:text-white flex font-mono">
+      {/* BACKGROUND GRAPHICS */}
+      <div className="fixed inset-0 bg-[linear-gradient(to_right,#1f293d12_1px,transparent_1px),linear-gradient(to_bottom,#1f293d12_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[380px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent blur-[140px] pointer-events-none rounded-full" />
 
-      {/* Header */}
-      <div className="max-w-4xl mx-auto pt-8 px-4 sm:px-6 lg:px-8 space-y-3 relative z-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-xs font-mono text-blue-400">
-          <LuRepeat className="w-3.5 h-3.5 animate-spin-slow" />
-          <span>Membership Renewal Gateway</span>
-        </div>
-        <div className="border-b border-slate-800/80 pb-6">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Subscription Extension
-          </h1>
-          <p className="text-slate-400 text-sm mt-2 font-mono">
-            Search returning students, re-allocate seats, and log collection dues.
-          </p>
-        </div>
-      </div>
+      {/* REUSABLE SIDEBAR */}
+      <LibrarySidebar
+        sidebarCollapsed={sidebarCollapsed}
+        setSidebarCollapsed={setSidebarCollapsed}
+        branchName={library?.name || 'Branch'}
+      />
 
-      {}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 relative z-10 space-y-6">
-        
-        {/* 1. Student Search Lookup */}
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-xl shadow-2xl relative">
-          <label className="block text-xs font-mono uppercase text-slate-300 mb-2">
-            Search Returning Student <span className="text-rose-400">*</span>
-          </label>
-          <div className="relative">
-            <LuSearch className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
-            <input 
-              type="text" 
-              placeholder="Search by student name..." 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-11 pr-4 py-3.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all font-mono shadow-inner"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
-                <LuX className="w-4 h-4" />
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+        <div className="bg-slate-900/60 border border-slate-800/90 rounded-2xl p-6 backdrop-blur-xl mb-8 flex items-center justify-between">
+          <div>
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-400 uppercase">
+              Membership Extensions
+            </span>
+            <h1 className="text-2xl font-extrabold text-white mt-1">Student Renewal Portal</h1>
+          </div>
+          <button
+            onClick={() => navigate(`/library/${id}`)}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold uppercase border border-slate-700 flex items-center gap-2"
+          >
+            <LuArrowLeft className="w-4 h-4 text-blue-400" />
+            <span>Dashboard</span>
+          </button>
+        </div>
+
+        {/* STEP 1: SEARCH STUDENT */}
+        {currentStep === 1 && (
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <LuSearch className="w-5 h-5 text-blue-400" /> Search Student to Renew
+            </h2>
+
+            <div className="flex gap-3">
+              <input
+                type="text"
+                placeholder="Search by Name, Phone, or Membership ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchStudents()}
+                className="flex-1 bg-[#080C14] border border-slate-800 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+              />
+              <button
+                onClick={handleSearchStudents}
+                disabled={searching}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase rounded-xl flex items-center gap-2"
+              >
+                {searching ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuSearch className="w-4 h-4" />}
+                <span>Search</span>
               </button>
+            </div>
+
+            {searchResults.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <span className="text-xs text-slate-400 uppercase font-bold">
+                  Matches Found ({searchResults.length}):
+                </span>
+                <div className="space-y-2">
+                  {searchResults.map((std) => {
+                    const lastMem = std.memberships?.[0];
+                    const lastSeatBooking = lastMem?.bookings?.find((b) => b.seat?.seatNumber !== undefined);
+
+                    const shiftNames = lastMem?.bookings
+                      ?.map((b) => b.shift?.name || library?.shifts.find((s) => s.id === b.shiftId)?.name)
+                      .filter(Boolean)
+                      .join(', ');
+
+                    const totalShiftsCount = lastMem?.bookings?.length || 0;
+
+                    return (
+                      <div
+                        key={std.id}
+                        onClick={() => handleSelectStudent(std)}
+                        className="cursor-pointer bg-[#080C14] border border-slate-800 hover:border-blue-500/50 p-4 rounded-2xl flex items-center justify-between transition-all"
+                      >
+                        <div className="space-y-1">
+                          <div className="font-bold text-sm text-white flex items-center gap-2">
+                            {std.name}
+                            {lastMem && (
+                              <span className="px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30 text-[10px] uppercase tracking-wider font-bold">
+                                Mem #{lastMem.id}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Father: <span className="text-slate-300">{std.fathersName}</span> | Phone: {std.phone}
+                          </div>
+
+                          {lastMem ? (
+                            <div className="pt-2 flex flex-wrap items-center gap-3 text-[11px]">
+                              <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-blue-400">
+                                <LuCalendar className="w-3.5 h-3.5 text-blue-400" />
+                                <span>
+                                  {formatReadableDate(lastMem.startDate)} – {formatReadableDate(lastMem.endDate)}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-emerald-400 font-bold">
+                                <LuClock className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>
+                                  {totalShiftsCount} Shift{totalShiftsCount !== 1 ? 's' : ''} ({shiftNames || 'Standard Shift'})
+                                </span>
+                              </div>
+
+                              {lastSeatBooking?.seat?.seatNumber !== undefined && (
+                                <div className="bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 text-amber-400 font-bold">
+                                  Seat #{lastSeatBooking.seat.seatNumber} ({lastSeatBooking.seat.room?.name || 'Main Room'})
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-500 italic pt-1">
+                              No previous membership history on record.
+                            </div>
+                          )}
+                        </div>
+                        <button className="px-4 py-2 bg-blue-600/10 border border-blue-500/30 text-blue-400 font-bold text-xs rounded-xl uppercase shrink-0">
+                          Select for Renewal
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
-          
-          {searchResults.length > 0 && !selectedStudent && (
-            <div className="absolute left-6 right-6 top-[85px] z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto ring-1 ring-black/50">
-              {searchResults.map(student => (
-                <button 
-                  type="button"
-                  key={student.id} 
-                  onClick={() => { 
-                    setSelectedStudent(student); 
-                    setSearchResults([]); 
-                    setSearchQuery('');
-                  }} 
-                  className="w-full text-left px-4 py-3 border-b border-slate-800/80 hover:bg-slate-800 transition-colors flex items-center justify-between"
-                >
-                  <div>
-                    <div className="text-white font-bold font-mono text-sm flex items-center gap-2">
-                      <LuUser className="w-4 h-4 text-blue-400" /> {student.name}
-                    </div>
-                    <div className="text-slate-400 text-xs mt-0.5 ml-6 font-mono">Father: {student.fathersName}</div>
-                  </div>
-                  <div className="text-slate-500 text-xs font-mono flex items-center gap-1.5">
-                    <LuPhone className="w-3.5 h-3.5" /> {student.phone}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
-        {}
-        {/* Main Renewal Entry Workspace */}
-        {selectedStudent && (
-          <form onSubmit={handleRenewalSubmit} className="space-y-6">
-            
-            {/* Active Student Display Banner */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-gradient-to-r from-blue-900/30 to-indigo-900/20 border border-blue-500/30 shadow-inner">
+        {/* STEP 2: DATES & PLAN */}
+        {currentStep === 2 && selectedStudent && (
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
-                <span className="text-xs text-blue-300 font-mono uppercase tracking-wider block mb-1">Target Profile Locked</span>
-                <div className="text-white font-bold text-base flex items-center gap-2">
-                  <LuCheck  className="w-5 h-5 text-emerald-400" />
-                  {selectedStudent.name} <span className="text-slate-400 text-sm font-normal ml-1">(Father: {selectedStudent.fathersName})</span>
-                </div>
+                <h2 className="text-lg font-bold text-white">{selectedStudent.name}</h2>
+                <p className="text-xs text-slate-400">Father's Name: {selectedStudent.fathersName}</p>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setSelectedStudent(null)} 
-                className="px-4 py-2 bg-[#080C14] hover:bg-slate-900 border border-slate-700 text-rose-400 text-xs font-bold rounded-lg transition-all flex items-center gap-2 w-fit"
-              >
-                <LuX className="w-3.5 h-3.5" /> Switch Student
+              <button onClick={() => setCurrentStep(1)} className="text-xs text-blue-400 uppercase font-bold underline">
+                Change Student
               </button>
             </div>
 
-            {checkingStudentHistory ? (
-              <div className="py-12 text-center space-y-3 bg-slate-900/60 border border-slate-800/80 rounded-2xl">
-                <LuLoader className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
-                <p className="text-xs font-mono text-slate-400">Loading historical subscription logs...</p>
-              </div>
-            ) : (
-              <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl space-y-8">
-                
-                {/* 1. Date Strategy Selectors */}
-                <div className="space-y-3">
-                  <label className="block text-xs font-mono uppercase text-slate-300">
-                    Step 1: Extension Strategy
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <button 
-                      type="button" 
-                      onClick={() => setDateStrategy('continuous')} 
-                      className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group ${
-                        dateStrategy === 'continuous'
-                          ? 'bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-500/20 ring-1 ring-blue-500/50'
-                          : 'bg-[#080C14] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <div className="font-bold text-xs font-mono mb-1">Continuous Link</div>
-                      <div className={`text-[10px] ${dateStrategy === 'continuous' ? 'text-blue-200' : 'text-slate-500'} leading-snug`}>Backdate to immediately follow last expiry date.</div>
-                    </button>
-                    
-                    <button 
-                      type="button" 
-                      onClick={() => setDateStrategy('today')} 
-                      className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group ${
-                        dateStrategy === 'today'
-                          ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg shadow-emerald-500/20 ring-1 ring-emerald-500/50'
-                          : 'bg-[#080C14] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <div className="font-bold text-xs font-mono mb-1">Start From Today</div>
-                      <div className={`text-[10px] ${dateStrategy === 'today' ? 'text-emerald-200' : 'text-slate-500'} leading-snug`}>Ignore gap days. New plan begins right now.</div>
-                    </button>
-
-                    <button 
-                      type="button" 
-                      onClick={() => setDateStrategy('custom')} 
-                      className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group ${
-                        dateStrategy === 'custom'
-                          ? 'bg-amber-600 border-amber-400 text-white shadow-lg shadow-amber-500/20 ring-1 ring-amber-500/50'
-                          : 'bg-[#080C14] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <div className="font-bold text-xs font-mono mb-1">Custom Future Date</div>
-                      <div className={`text-[10px] ${dateStrategy === 'custom' ? 'text-amber-200' : 'text-slate-500'} leading-snug`}>Manually select a specific start date below.</div>
-                    </button>
+            {lastM && (
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-400 uppercase">
+                  <LuHistory className="w-4 h-4 text-blue-400" /> Previous Membership History (Mem #{lastM.id}):
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                  <div className="bg-[#080C14] p-3 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] text-slate-500 uppercase block">Previous Start Date</span>
+                    <span className="text-white font-bold font-mono">{formatReadableDate(lastM.startDate)}</span>
+                  </div>
+                  <div className="bg-[#080C14] p-3 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] text-slate-500 uppercase block">Previous End Date</span>
+                    <span className="text-rose-400 font-bold font-mono">{formatReadableDate(lastM.endDate)}</span>
                   </div>
                 </div>
-
-                {}
-                {/* 2. Date & Duration Form Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-mono uppercase text-slate-300">
-                      Calculated Start Date <span className="text-rose-400">*</span>
-                    </label>
-                    <div className="relative">
-                      <LuCalendar className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input 
-                        required 
-                        type="date" 
-                        min={dateStrategy === 'custom' ? todayStr : undefined} 
-                        disabled={dateStrategy !== 'custom'} 
-                        value={startDate} 
-                        onChange={(e) => setStartDate(e.target.value)} 
-                        onClick={(e) => { if(dateStrategy === 'custom') e.currentTarget.showPicker?.(); }}
-                        className={`w-full bg-[#080C14] border rounded-xl pl-10 pr-4 py-3.5 text-sm text-white focus:outline-none transition-all font-mono [color-scheme:dark] ${
-                          dateStrategy !== 'custom' ? 'border-slate-800 opacity-60 cursor-not-allowed' : 'border-slate-700 focus:border-blue-500 cursor-pointer shadow-inner'
-                        }`}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-mono uppercase text-slate-300">
-                      Renewal Term
-                    </label>
-                    <div className="relative">
-                      <LuRefreshCw className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <select 
-                        value={durationMonths} 
-                        onChange={(e) => setDurationMonths(e.target.value)} 
-                        className="w-full bg-[#080C14] border border-slate-700 rounded-xl pl-10 pr-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-all font-mono shadow-inner"
-                      >
-                        <option value="1">1 Month Extension</option>
-                        <option value="2">2 Months Extension</option>
-                        <option value="3">3 Months Extension</option>
-                        <option value="6">6 Months Extension</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Deadline Result Banner */}
-                  {endDate && !isDateOverlappingActivePlan && (
-                    <div className="sm:col-span-2 p-3.5 rounded-xl bg-gradient-to-r from-blue-950/40 to-slate-900 border border-blue-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono text-blue-300 shadow-inner">
-                      <span className="flex items-center gap-2">
-                        <LuShieldCheck className="w-4 h-4 text-blue-400" />
-                        Next Expiration Deadline:
-                      </span>
-                      <strong className="text-white font-bold bg-blue-600/20 px-3 py-1.5 rounded-lg border border-blue-500/30 text-sm">
-                        {endDate}
-                      </strong>
-                    </div>
-                  )}
-                </div>
-
-                {/* Overlap Bug Protection Error Banner */}
-                {isDateOverlappingActivePlan && (
-                  <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/50 flex items-start gap-3">
-                    <LuTriangleAlert  className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-                    <div className="text-xs text-rose-200 leading-relaxed font-mono">
-                      <strong className="block text-rose-400 mb-1 text-sm">Active Plan Overlap Detected</strong>
-                      {selectedStudent.name} already has an active membership running until <span className="font-bold text-white">{getActivePlanEndDateString()}</span>. 
-                      Please change your strategy to <strong className="text-white">Continuous Link</strong> to extend their timeline without double-billing them for overlapping days.
-                    </div>
-                  </div>
-                )}
-
-                {}
-                {/* 3. Shift Configuration */}
-                <div className="space-y-3 border-t border-slate-800/80 pt-6">
-                  <label className="block text-xs font-mono uppercase text-slate-300">
-                    Step 2: Target Shifts <span className="text-rose-400">*</span>
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {[
-                      { id: 1, label: 'Shift 1', time: '06:00 AM – 12:00 PM' },
-                      { id: 2, label: 'Shift 2', time: '12:00 PM – 06:00 PM' },
-                      { id: 3, label: 'Shift 3', time: '06:00 PM – 11:00 PM' }
-                    ].map(shift => {
-                      const isSelected = selectedShifts.includes(shift.id);
-                      return (
-                        <button
-                          type="button"
-                          key={shift.id}
-                          onClick={() => handleShiftToggle(shift.id)}
-                          className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
-                            isSelected
-                              ? 'bg-blue-600/20 border-blue-500 text-white shadow-inner'
-                              : 'bg-[#080C14] border-slate-800 text-slate-400 hover:border-slate-700'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold text-xs font-mono">{shift.label}</div>
-                            <div className="text-[10px] opacity-70 font-mono mt-0.5">{shift.time}</div>
-                          </div>
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-400 text-white' : 'border-slate-700'}`}>
-                            {isSelected && <LuCheck  className="w-3.5 h-3.5" />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {}
-                {/* 4. Dynamic Seat Availability Allocation */}
-                {checkingSeatAvailability ? (
-                  <div className="py-6 text-center space-y-3 bg-[#080C14] rounded-xl border border-slate-800">
-                    <LuLoader className="w-6 h-6 text-cyan-400 animate-spin mx-auto" />
-                    <p className="text-xs font-mono text-slate-400">Scanning room matrices...</p>
-                  </div>
-                ) : availabilityData && (
-                  <div className="space-y-4 border-t border-slate-800/80 pt-6">
-                    <label className="block text-xs font-mono uppercase text-slate-300">
-                      Step 3: Seat Re-Allocation
-                    </label>
-
-                    {renewalStatus?.previousSeatNumber && (
-                      <div className="flex items-center gap-3 p-3 bg-[#080C14] rounded-xl border border-slate-800">
-                        <input 
-                          type="checkbox" 
-                          id="seatToggle" 
-                          checked={wantDifferentSeat} 
-                          onChange={(e) => setWantDifferentSeat(e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-slate-900 cursor-pointer"
-                        />
-                        <label htmlFor="seatToggle" className="text-xs font-mono text-slate-300 cursor-pointer select-none pt-0.5">
-                          Drop previous history and allocate a new seat
-                        </label>
-                      </div>
-                    )}
-
-                    {/* SCENARIO A: Keeping Old Seat */}
-                    {!wantDifferentSeat && renewalStatus?.previousSeatNumber && (
-                      <div>
-                        {isPreviousSeatFree ? (
-                          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3">
-                            <LuCheck  className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                            <div className="text-xs text-emerald-200 leading-relaxed font-mono">
-                              <strong className="block text-emerald-400 mb-1 text-sm">Seat Retained</strong>
-                              The historical <strong className="text-white">Seat #{renewalStatus.previousSeatNumber}</strong> is available and reserved for this renewal block.
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-                            <LuTriangleAlert  className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                            <div className="text-xs text-amber-200 leading-relaxed font-mono">
-                              <strong className="block text-amber-400 mb-1 text-sm">Seat Taken</strong>
-                              Historical Seat #{renewalStatus.previousSeatNumber} has been occupied. You must allocate an alternate workspace below.
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* SCENARIO B: Alternate Setup (Single or Split) */}
-                    {(wantDifferentSeat || !isPreviousSeatFree) && (
-                      <div className="bg-[#080C14] p-5 rounded-xl border border-slate-800 space-y-4">
-                        {!availabilityData.isSplitCombo ? (
-                          <div className="space-y-2">
-                            <label className="text-xs font-mono text-slate-300 flex items-center gap-2">
-                              <LuArmchair className="w-4 h-4 text-cyan-400" /> Choose Open Seat (Covers All Shifts)
-                            </label>
-                            <select 
-                              required 
-                              value={selectedSingleSeatId} 
-                              onChange={(e) => setSelectedSingleSeatId(e.target.value)} 
-                              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500 font-mono"
-                            >
-                              <option value="">-- Available Seats --</option>
-                              {availabilityData.availableSeats?.map(seat => (
-                                <option key={seat.id} value={seat.id}>Seat #{seat.seatNumber} ({seat.room?.name || 'Main Hall'})</option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-amber-400 text-xs font-mono font-bold border-b border-slate-800 pb-3">
-                              <LuZap className="w-4 h-4 shrink-0" />
-                              Split Seat Assignment Required
-                            </div>
-                            <p className="text-xs font-mono text-slate-400 leading-relaxed">
-                              No single desk is open for all selected shifts simultaneously. Assign a unique seat for each shift:
-                            </p>
-                            <div className="space-y-3 pt-1">
-                              {availabilityData.splitOptions?.map(option => (
-                                <div key={option.shiftId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg bg-slate-900/50 border border-slate-800/80">
-                                  <span className="text-xs font-mono text-white font-bold flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                                    Shift {option.shiftId} Seat:
-                                  </span>
-                                  <select 
-                                    required 
-                                    value={splitSeatSelections[option.shiftId] || ''} 
-                                    onChange={(e) => handleSplitSelectionChange(option.shiftId, e.target.value)} 
-                                    className="bg-[#080C14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono w-full sm:w-64"
-                                  >
-                                    <option value="">-- Assign Shift {option.shiftId} --</option>
-                                    {option.freeSeats.map(seat => (
-                                      <option key={seat.id} value={seat.id}>Seat #{seat.seatNumber} ({seat.room?.name})</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {!checkingSeatAvailability && !availabilityData && (
-                  <div className="py-4 text-center border-t border-slate-800/80 pt-6">
-                    <p className="text-xs font-mono text-slate-500 italic">Select start date and shifts above to render availability constraints.</p>
-                  </div>
-                )}
-
-                {}
-                {/* 5. Billing Info Logs */}
-                <div className="space-y-3 border-t border-slate-800/80 pt-6">
-                  <label className="block text-xs font-mono uppercase text-slate-300">
-                    Step 4: Billing Ledger
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="relative">
-                      <span className="text-slate-500 font-mono text-sm absolute left-4 top-1/2 -translate-y-1/2">₹</span>
-                      <input 
-                        required 
-                        type="number" 
-                        placeholder="Collected Fee *" 
-                        value={paymentInfo.amount} 
-                        onChange={(e) => setPaymentInfo({...paymentInfo, amount: e.target.value})} 
-                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-8 pr-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono shadow-inner"
-                      />
-                    </div>
-                    <div className="relative">
-                      <LuCreditCard className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <select 
-                        value={paymentInfo.paymentType} 
-                        onChange={(e) => setPaymentInfo({...paymentInfo, paymentType: e.target.value})} 
-                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-10 pr-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono shadow-inner appearance-none"
-                      >
-                        <option value="cash">Cash Collection</option>
-                        <option value="upi">UPI Portal / QR Scan</option>
-                      </select>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <input 
-                        type="text" 
-                        placeholder="Transaction footnotes or Ref ID (Optional)..." 
-                        value={paymentInfo.remarks} 
-                        onChange={(e) => setPaymentInfo({...paymentInfo, remarks: e.target.value})} 
-                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono shadow-inner"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Final Submission */}
-                <div className="pt-4 hidden md:block">
-                  <button 
-                    type="submit" 
-                    disabled={submitting || !isFormValid()} 
-                    className={`w-full py-4 rounded-xl font-mono text-xs uppercase font-bold tracking-wider transition-all shadow-xl flex items-center justify-center gap-2 border ${
-                      submitting || !isFormValid()
-                        ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-blue-400/30 shadow-blue-600/25'
-                    }`}
-                  >
-                    {submitting ? (
-                      <><LuLoader className="w-4 h-4 animate-spin" /> Processing Chain...</>
-                    ) : (
-                      <><LuArrowRight className="w-4 h-4" /> Execute Complete Renewal</>
-                    )}
-                  </button>
-                </div>
-
               </div>
             )}
-            
-            {/* Fixed Bottom Dock Navigation for Mobile */}
-            <div className="fixed md:hidden bottom-0 left-0 right-0 z-40 bg-[#080C14]/95 border-t border-slate-800 p-3.5 backdrop-blur-xl flex items-center justify-center shadow-2xl">
-              <button 
-                type="submit" 
-                disabled={submitting || !isFormValid()} 
-                className={`w-full py-3.5 rounded-xl font-mono text-xs uppercase font-bold tracking-wider transition-all shadow-xl flex items-center justify-center gap-2 border ${
-                  submitting || !isFormValid()
-                    ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-400/30 shadow-blue-600/30'
-                }`}
-              >
-                {submitting ? "Processing..." : "Submit Renewal"}
-              </button>
+
+            {Object.keys(previousSeatsMap).length > 0 && (
+              <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-2xl flex items-center gap-3 text-xs">
+                <LuBookmarkCheck className="w-5 h-5 text-blue-400 shrink-0" />
+                <div>
+                  <span className="font-bold text-blue-400 uppercase block">Previous Seat Remembered:</span>
+                  <span className="text-slate-300">
+                    Student previously occupied{' '}
+                    {Object.entries(previousSeatsMap)
+                      .map(([, sMeta]) => `Seat #${sMeta.seatNumber} (${sMeta.roomName})`)
+                      .join(', ')}
+                    . The engine will pre-select these seats if available!
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <label className="block text-xs uppercase font-bold text-slate-300">Renewal Schedule Strategy:</label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRenewalType('continuous');
+                    if (lastM) {
+                      const prevEnd = new Date(lastM.endDate);
+                      prevEnd.setDate(prevEnd.getDate() + 1);
+                      const nextStartStr = prevEnd.toISOString().split('T')[0];
+                      setStartDate(nextStartStr);
+                      setEndDate(calculateEndDate(nextStartStr, durationMonths));
+                    }
+                  }}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    renewalType === 'continuous'
+                      ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                      : 'bg-[#080C14] border-slate-800 text-slate-400'
+                  }`}
+                >
+                  <div className="font-bold text-xs uppercase text-blue-400">Continuous Renewal</div>
+                  <div className="text-[11px] text-slate-300 mt-1">
+                    Auto-starts exactly 1 day after previous membership ended ({lastM ? formatReadableDate(new Date(new Date(lastM.endDate).setDate(new Date(lastM.endDate).getDate() + 1))) : 'Today'}).
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRenewalType('custom')}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    renewalType === 'custom'
+                      ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                      : 'bg-[#080C14] border-slate-800 text-slate-400'
+                  }`}
+                >
+                  <div className="font-bold text-xs uppercase text-blue-400">Custom Date Renewal</div>
+                  <div className="text-[11px] text-slate-300 mt-1">
+                    For students who took a break. Select today, future, or custom dates.
+                  </div>
+                </button>
+              </div>
             </div>
 
-          </form>
+            <div className="space-y-3 pt-4 border-t border-slate-800">
+              <label className="block text-xs uppercase font-bold text-slate-300">Select Renewal Duration:</label>
+              <div className="grid grid-cols-3 gap-3">
+                {[1, 2, 3].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => handleDurationChange(m)}
+                    className={`py-3 px-4 rounded-xl font-bold text-xs uppercase border transition-all ${
+                      durationMonths === m
+                        ? 'bg-blue-600/20 border-blue-500 text-blue-400 shadow-lg shadow-blue-500/10'
+                        : 'bg-[#080C14] border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {m} Month{m > 1 ? 's' : ''} Plan
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                <div>
+                  <label className="block text-xs uppercase text-slate-400 mb-1">
+                    Renewal Start Date ({formatReadableDate(startDate)})
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    disabled={renewalType === 'continuous'}
+                    onChange={(e) => handleStartDateChange(e.target.value)}
+                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase text-slate-400 mb-1">
+                    Renewal End Date ({formatReadableDate(endDate)})
+                  </label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t border-slate-800">
+              <label className="block text-xs uppercase font-bold text-slate-300">Selected Shift(s):</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {library?.shifts.map((shift) => {
+                  const isSelected = selectedShiftIds.includes(shift.id);
+                  return (
+                    <div
+                      key={shift.id}
+                      onClick={() => toggleShiftSelection(shift.id)}
+                      className={`cursor-pointer p-4 rounded-2xl border transition-all ${
+                        isSelected
+                          ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                          : 'bg-[#080C14] border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-sm">{shift.name}</span>
+                        {isSelected && <LuCheck className="w-4 h-4 text-blue-400" />}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">{shift.startTime} – {shift.endTime}</div>
+                      <div className="text-xs font-bold text-emerald-400 mt-2">
+                        ₹{shift.price * durationMonths} total
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              onClick={checkSeatAvailability}
+              disabled={checkingAvailability}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs uppercase rounded-xl shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2"
+            >
+              {checkingAvailability ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuSparkles className="w-4 h-4" />}
+              <span>Verify Seats & Pre-Select Previous Seat</span>
+            </button>
+          </div>
+        )}
+
+        {/* STEP 3: SEAT ALLOCATION ENGINE */}
+        {currentStep === 3 && (
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <LuGrid2X2 className="w-5 h-5 text-blue-400" /> Renewal Seat Matrix
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Window: {formatReadableDate(startDate)} to {formatReadableDate(endDate)} ({selectedShiftIds.length} Shift{selectedShiftIds.length > 1 ? 's' : ''})
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={assignSeatLater}
+                  onChange={(e) => setAssignSeatLater(e.target.checked)}
+                  className="rounded bg-[#080C14] border-slate-700 text-blue-600 focus:ring-0"
+                />
+                <span className="text-xs text-slate-300 font-bold uppercase">
+                  Floating Member (Assign Seat Later)
+                </span>
+              </label>
+            </div>
+
+            {!assignSeatLater && (
+              <div className="space-y-6">
+                {hasContinuousSeat ? (
+                  <div className="space-y-4">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex items-start gap-3">
+                      <LuCheckCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-emerald-400 font-bold text-xs uppercase">
+                          Continuous Single Seat Available!
+                        </div>
+                        <div className="text-xs text-slate-300 mt-0.5">
+                          Select one continuous seat below for all {selectedShiftIds.length} requested shift(s):
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#080C14] border border-slate-800 p-5 rounded-2xl space-y-3">
+                      <label className="block text-xs uppercase font-bold text-blue-400">
+                        Choose Available Continuous Seat:
+                      </label>
+
+                      <div className="max-h-80 overflow-y-auto pr-2 space-y-2.5 custom-scrollbar">
+                        {continuousSeats.map((seat) => {
+                          const firstShiftId = selectedShiftIds[0];
+                          const prevSeat = previousSeatsMap[firstShiftId];
+                          const isPrevious = prevSeat && prevSeat.seatId === seat.id;
+                          const isSelected = chosenAllocations[selectedShiftIds[0]] === seat.id;
+
+                          return (
+                            <div
+                              key={seat.id}
+                              onClick={() => {
+                                const updatedMap: Record<number, number> = {};
+                                selectedShiftIds.forEach((sId) => {
+                                  updatedMap[sId] = seat.id;
+                                });
+                                setChosenAllocations(updatedMap);
+                              }}
+                              className={`cursor-pointer p-3.5 rounded-2xl border transition-all flex items-center justify-between ${
+                                isSelected
+                                  ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-bold text-sm ${
+                                    isSelected
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  #{seat.seatNumber}
+                                </div>
+
+                                <div>
+                                  <div className="font-bold text-xs text-white flex items-center gap-2">
+                                    <span>{seat.roomName}</span>
+                                    {isPrevious && (
+                                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[10px] uppercase font-bold">
+                                        ⭐ Student Previous Seat
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2 text-[10px] mt-1 text-slate-400">
+                                    <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 flex items-center gap-1">
+                                      {seat.genderType === 'male' && '👨 Boys Only'}
+                                      {seat.genderType === 'female' && '👩 Girls Only'}
+                                      {(!seat.genderType || seat.genderType === 'all') && '👫 Unisex'}
+                                    </span>
+
+                                    {seat.nearAc && (
+                                      <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center gap-1 font-bold">
+                                        <LuSnowflake className="w-3 h-3" /> Near AC
+                                      </span>
+                                    )}
+
+                                    {seat.chargingPoint && (
+                                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1 font-bold">
+                                        <LuZap className="w-3 h-3" /> Power Plug
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {isSelected ? (
+                                  <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                                    <LuCheck className="w-4 h-4" />
+                                  </div>
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full border border-slate-700" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-start gap-3">
+                      <LuBug className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-amber-400 font-bold text-xs uppercase">
+                          Minimal Seat Swap Suggested
+                        </div>
+                        <div className="text-xs text-slate-300 mt-0.5">
+                          No single continuous seat is available across all shifts. Select seats for each shift below:
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      {selectedShiftIds.map((sId) => {
+                        const shiftObj = library?.shifts.find((s) => s.id === sId);
+                        const avail = availabilityPerShift[sId] || [];
+                        const prevSeat = previousSeatsMap[sId];
+                        const isPrevFree = prevSeat && avail.some((s) => s.id === prevSeat.seatId);
+
+                        return (
+                          <div key={sId} className="bg-[#080C14] border border-slate-800 p-5 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                                {shiftObj?.name} ({shiftObj?.startTime} – {shiftObj?.endTime})
+                              </span>
+                              {prevSeat && (
+                                <span
+                                  className={`text-[11px] font-bold ${
+                                    isPrevFree ? 'text-emerald-400' : 'text-amber-400'
+                                  }`}
+                                >
+                                  {isPrevFree
+                                    ? `✨ Seat #${prevSeat.seatNumber} (${prevSeat.roomName}) Available!`
+                                    : `⚠️ Seat #${prevSeat.seatNumber} Occupied for this window`}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="max-h-64 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                              {avail.map((seat) => {
+                                const isPrevious = prevSeat && prevSeat.seatId === seat.id;
+                                const isSelected = chosenAllocations[sId] === seat.id;
+
+                                return (
+                                  <div
+                                    key={seat.id}
+                                    onClick={() =>
+                                      setChosenAllocations({
+                                        ...chosenAllocations,
+                                        [sId]: seat.id,
+                                      })
+                                    }
+                                    className={`cursor-pointer p-3 rounded-xl border transition-all flex items-center justify-between ${
+                                      isSelected
+                                        ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div
+                                        className={`w-8 h-8 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
+                                          isSelected
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-slate-800 text-slate-300'
+                                        }`}
+                                      >
+                                        #{seat.seatNumber}
+                                      </div>
+
+                                      <div>
+                                        <div className="font-bold text-xs text-white flex items-center gap-2">
+                                          <span>{seat.roomName}</span>
+                                          {isPrevious && (
+                                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-400 text-[10px] uppercase font-bold">
+                                              ⭐ Previous Seat
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="flex items-center gap-2 text-[10px] mt-1 text-slate-400">
+                                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                                            {seat.genderType === 'male' && '👨 Boy'}
+                                            {seat.genderType === 'female' && '👩 Girl'}
+                                            {(!seat.genderType || seat.genderType === 'all') && '👫 Unisex'}
+                                          </span>
+
+                                          {seat.nearAc && (
+                                            <span className="text-cyan-400 font-bold flex items-center gap-0.5">
+                                              <LuSnowflake className="w-3 h-3" /> Near AC
+                                            </span>
+                                          )}
+
+                                          {seat.chargingPoint && (
+                                            <span className="text-emerald-400 font-bold flex items-center gap-0.5">
+                                              <LuZap className="w-3 h-3" /> Power
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {isSelected && <LuCheck className="w-4 h-4 text-blue-400" />}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-4 pt-4 border-t border-slate-800">
+              <button
+                onClick={() => setCurrentStep(2)}
+                className="w-1/2 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase rounded-xl"
+              >
+                Back to Plan
+              </button>
+              <button
+                onClick={() => setCurrentStep(4)}
+                className="w-1/2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase rounded-xl shadow-lg shadow-blue-600/30"
+              >
+                Proceed to Payment
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4: PAYMENT */}
+        {currentStep === 4 && (
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <LuCreditCard className="w-5 h-5 text-blue-400" /> Renewal Payment
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs uppercase text-slate-300 mb-1">Payment Amount (INR)</label>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase text-slate-300 mb-1">Payment Mode</label>
+                <select
+                  value={paymentType}
+                  onChange={(e: any) => setPaymentType(e.target.value)}
+                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="upi">UPI / Online</option>
+                  <option value="cash">Cash</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs uppercase text-slate-300 mb-1">Payment Remarks</label>
+              <input
+                type="text"
+                placeholder="e.g. Renewal GPay #204"
+                value={paymentRemarks}
+                onChange={(e) => setPaymentRemarks(e.target.value)}
+                className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex gap-4 pt-4 border-t border-slate-800">
+              <button
+                onClick={() => setCurrentStep(3)}
+                className="w-1/2 py-3.5 bg-slate-800 text-slate-300 font-bold text-xs uppercase rounded-xl"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleSubmitRenewal}
+                disabled={submitting}
+                className="w-1/2 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2"
+              >
+                {submitting ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuCheck className="w-4 h-4" />}
+                <span>Confirm Renewal (₹{paymentAmount})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 5: RECEIPT */}
+        {currentStep === 5 && completedRenewal && (
+          <div className="bg-slate-900/60 border border-slate-800/90 rounded-3xl p-6 sm:p-10 backdrop-blur-xl space-y-8 max-w-3xl mx-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <LuShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Renewal Confirmed!</h2>
+                  <p className="text-xs text-emerald-400 font-mono">Membership Extended</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={printOrSavePdf}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 flex items-center gap-2"
+                >
+                  <LuPrinter className="w-4 h-4 text-blue-400" />
+                  <span>Print / PDF</span>
+                </button>
+                <button
+                  onClick={shareWhatsAppReceipt}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+                >
+                  <LuShare2 className="w-4 h-4" />
+                  <span>Share WhatsApp</span>
+                </button>
+              </div>
+            </div>
+
+            {/* RECEIPT CARD */}
+            <div className="bg-[#080C14] border border-slate-800 rounded-2xl p-6 space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div>
+                  <span className="text-xs text-slate-400 uppercase font-bold block">{library?.name}</span>
+                  <span className="text-[10px] text-slate-500">{library?.address}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold">Renewal ID</span>
+                  <span className="text-base font-extrabold text-blue-400 font-mono bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-xl inline-block mt-0.5">
+                    #{completedRenewal.membership.id}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pb-4 border-b border-slate-800">
+                <div><span className="text-slate-500 uppercase block">Student Name</span><span className="text-white font-bold text-sm">{completedRenewal.student.name}</span></div>
+                <div><span className="text-slate-500 uppercase block">Father's Name</span><span className="text-white font-bold text-sm">{completedRenewal.student.fathersName}</span></div>
+                <div><span className="text-slate-500 uppercase block">Contact Phone</span><span className="text-slate-300 font-mono">{completedRenewal.student.phone}</span></div>
+                <div><span className="text-slate-500 uppercase block">Address</span><span className="text-slate-300">{completedRenewal.student.address}</span></div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pb-4 border-b border-slate-800">
+                <div><span className="text-slate-500 uppercase block">Renewal Start</span><span className="text-emerald-400 font-bold text-sm font-mono">{formatReadableDate(completedRenewal.membership.startDate)}</span></div>
+                <div><span className="text-slate-500 uppercase block">Renewal End</span><span className="text-emerald-400 font-bold text-sm font-mono">{formatReadableDate(completedRenewal.membership.endDate)}</span></div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                <div><span className="text-slate-500 uppercase block">Amount Paid</span><span className="text-emerald-400 font-extrabold text-base">₹{completedRenewal.payment.amount}</span></div>
+                <div><span className="text-slate-500 uppercase block">Payment Mode</span><span className="text-slate-300 uppercase font-bold">{completedRenewal.payment.paymentType}</span></div>
+                <div><span className="text-slate-400 font-mono">{completedRenewal.payment.remarks || 'N/A'}</span></div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => navigate(`/library/${id}`)}
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2"
+            >
+              <LuLayoutDashboard className="w-4 h-4" />
+              <span>Return to Branch Dashboard</span>
+            </button>
+          </div>
         )}
       </main>
     </div>

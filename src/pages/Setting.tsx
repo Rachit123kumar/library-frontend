@@ -39,8 +39,8 @@ export interface Seat {
   room?: { name: string };
 }
 
-const BASE_URL ='https://api.libdesk.online';
-// const BASE_URL = import.meta.env?.VITE_API_URL || 'https://api.libdesk.online';
+// const BASE_URL ='https://api.libdesk.online';
+const BASE_URL = import.meta.env?.VITE_API_URL || 'https://api.libdesk.online';
 
 export default function SettingsPage(): React.JSX.Element {
   // Global Profile Details State

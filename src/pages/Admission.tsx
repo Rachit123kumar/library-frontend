@@ -1,985 +1,973 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 import {
-  LuUser,
-  LuPhone,
-  LuMail,
-  LuMapPin,
-  LuCalendar,
-  LuClock,
-  LuArmchair,
   LuCreditCard,
+  LuGrid2X2,
+  LuArrowLeft,
+  LuMapPin,
   LuCheck,
-  LuBug,
+  LuRefreshCw,
+  LuClock,
+  LuCheckCheck,
   LuSparkles,
-  LuLoader,
-  LuArrowRight,
+  LuUser,
+  LuCalendar,
   LuShieldCheck,
-  LuInfo,
-  LuZap,
-  // LuX
+  LuPrinter,
+  LuShare2,
+  LuBug,
 } from 'react-icons/lu';
-import Navbar from '../components/Navbar';
 
-interface Room {
+// IMPORT THE REUSABLE SIDEBAR
+import LibrarySidebar from '../components/LibrarySideBar';
+
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+
+interface Shift {
   id: number;
   name: string;
+  startTime: string;
+  endTime: string;
+  price: number;
 }
 
-interface Seat {
+interface LibraryData {
+  id: number;
+  name: string;
+  address: string;
+  holdDays: number;
+  shifts: Shift[];
+}
+
+interface SeatOption {
   id: number;
   seatNumber: number;
-  nearAc: boolean;
-  chargingPoint: boolean;
-  room?: Room;
+  roomName: string;
+  totalDailyBookings: number;
 }
 
-interface SplitShiftOption {
+interface RecommendedCombo {
   shiftId: number;
-  freeSeats: Seat[];
+  shiftName: string;
+  seatId: number;
+  seatNumber: number;
+  roomName: string;
 }
 
-interface APIResponse {
-  success: boolean;
-  isSplitCombo: boolean;
-  count?: number;
-  availableSeats?: Seat[];
-  splitOptions?: SplitShiftOption[];
-  message?: string;
+interface AdmissionResponse {
+  student: {
+    id: number;
+    name: string;
+    fathersName: string;
+    phone: string;
+    email?: string;
+    address: string;
+  };
+  membership: {
+    id: number;
+    startDate: string;
+    endDate: string;
+  };
+  bookings: Array<{
+    id: number;
+    seatId: number;
+    shiftId: number;
+    shiftPrice: number;
+  }>;
+  payment: {
+    id: number;
+    amount: number;
+    paymentType: string;
+    remarks?: string;
+  };
 }
 
-// Environment Variable Handling with graceful fallback
-const BASE_URL =  'https://api.libdesk.online';
-// const BASE_URL = import.meta.env?.VITE_API_URL || 'https://api.libdesk.online';
+export default function AdmissionPage(): React.JSX.Element {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
-export default function AdmissionForm(): React.JSX.Element {
-  // 1. Mobile Step Wizard State (1: Personal, 2: Plan, 3: Seat, 4: Payment)
+  // Master Data States
+  const [library, setLibrary] = useState<LibraryData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [checkingAvailability, setCheckingAvailability] = useState<boolean>(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+
+  // Wizard Steps
   const [currentStep, setCurrentStep] = useState<number>(1);
+  const [completedAdmission, setCompletedAdmission] = useState<AdmissionResponse | null>(null);
 
-  // 2. Core State Handlers
-  const [studentInfo, setStudentInfo] = useState({
-    name: '',
-    fathersName: '',
-    gender: 'male',
-    phone: '',
-    email: '',
-    address: ''
-  });
+  // Form Field States
+  const [name, setName] = useState('');
+  const [fathersName, setFathersName] = useState('');
+  const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
 
-  const [startDate, setStartDate] = useState('');
-  const [durationMonths, setDurationMonths] = useState<string>('1');
-  const [endDate, setEndDate] = useState('');
-
-  const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
-  const [paymentInfo, setPaymentInfo] = useState({
-    amount: '',
-    paymentType: 'cash',
-    remarks: ''
-  });
-
-  // Validation Error state
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-
-  // 3. Control Data & Allocation Mapping States
-  const [apiResponse, setApiResponse] = useState<APIResponse | null>(null);
-  const [selectedSeatId, setSelectedSeatId] = useState<string>('');
-  const [splitSeatSelections, setSplitSeatSelections] = useState<Record<number, number>>({});
-
-  const [checkingSeats, setCheckingSeats] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Optimized React Toastify Dispatcher
- const showToast = (
-  title: string,
-  message: string,
-  type: "success" | "error" | "info" = "info"
-) => {
-  const id = `${type}-${title}`;
-
-  if (toast.isActive(id)) return;
-
-  const content = (
-    <div>
-      <div className="font-bold text-xs">{title}</div>
-      <div className="text-xs mt-1">{message}</div>
-    </div>
-  );
-
-  toast(content, {
-    toastId: id,
-    type,
-  });
-};
-
-  // System Date Constraints (Prevent past selections)
+  // Default dates
   const todayStr = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(todayStr);
+  const [durationMonths, setDurationMonths] = useState<number>(1);
 
-  // Auto-calculate End Date whenever Start Date or Duration Changes
-  useEffect(() => {
-    if (!startDate) {
-      setEndDate('');
-      return;
-    }
+  const calculateEndDate = (start: string, months: number): string => {
+    const [y, m, d] = start.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    dateObj.setMonth(dateObj.getMonth() + months);
+    dateObj.setDate(dateObj.getDate() - 1);
 
-    const start = new Date(startDate);
-    const monthsToAdd = parseInt(durationMonths, 10);
-    start.setMonth(start.getMonth() + monthsToAdd);
+    const finalYear = dateObj.getFullYear();
+    const finalMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const finalDay = String(dateObj.getDate()).padStart(2, '0');
 
-    const calculatedEndDate = start.toISOString().split('T')[0];
-    setEndDate(calculatedEndDate);
-  }, [startDate, durationMonths]);
-
-  // Re-run live seat map queries when parameters change
-  useEffect(() => {
-    if (startDate && endDate && selectedShifts.length > 0) {
-      fetchAvailableSeats();
-    } else {
-      setApiResponse(null);
-      setSelectedSeatId('');
-      setSplitSeatSelections({});
-    }
-  }, [startDate, endDate, selectedShifts]);
-
-  const fetchAvailableSeats = async () => {
-    setCheckingSeats(true);
-    try {
-      const query = new URLSearchParams({
-        startDate,
-        endDate,
-        shifts: selectedShifts.join(',')
-      }).toString();
-
-      const res = await fetch(`${BASE_URL}/api/v1/available?${query}`);
-
-      if (!res.ok) {
-        throw new Error(`Server status ${res.status}: Live seats service unreachable`);
-      }
-
-      const result: APIResponse = await res.json();
-
-      setApiResponse(result);
-      setSelectedSeatId('');
-      setSplitSeatSelections({});
-
-      if (result.isSplitCombo) {
-        showToast("Split Seat Plan Required", "No single seat is open for all selected shifts. Select an open seat per shift.", "info");
-      } else if (result.availableSeats && result.availableSeats.length > 0) {
-        showToast("Seats Available", `Found ${result.availableSeats.length} matching seats for your shift selection.`, "success");
-      }
-    } catch (err) {
-      console.error("Error fetching live slot configurations:", err);
-      setApiResponse(null);
-      showToast("Live Sync Warning", "Operating in offline mode. Client validation active.", "info");
-    } finally {
-      setCheckingSeats(false);
-    }
+    return `${finalYear}-${finalMonth}-${finalDay}`;
   };
 
-  const validateField = (name: string, value: string): string => {
-    switch (name) {
-      case 'name':
-        return value.trim().length < 2 ? 'Student full name is required' : '';
-      case 'fathersName':
-        return value.trim().length < 2 ? "Father's name is required" : '';
-      case 'phone':
-        return !/^[6-9]\d{9}$/.test(value) ? 'Enter a valid 10-digit mobile number' : '';
-      case 'address':
-        return value.trim().length < 5 ? 'Please enter complete address' : '';
-      case 'amount':
-        return !value || parseFloat(value) <= 0 ? 'Enter a valid fee amount' : '';
-      default:
-        return '';
-    }
-  };
+  const [endDate, setEndDate] = useState(calculateEndDate(todayStr, 1));
 
-  const handleBlur = (fieldName: string) => {
-    setTouched((prev) => ({ ...prev, [fieldName]: true }));
-    let value = '';
-    if (fieldName in studentInfo) {
-      value = studentInfo[fieldName as keyof typeof studentInfo];
-    } else if (fieldName in paymentInfo) {
-      value = paymentInfo[fieldName as keyof typeof paymentInfo];
-    }
-    const err = validateField(fieldName, value);
-    setErrors((prev) => ({ ...prev, [fieldName]: err }));
-  };
+  // Shift & Seat Allocation States
+  const [selectedShiftIds, setSelectedShiftIds] = useState<number[]>([]);
+  const [assignSeatLater, setAssignSeatLater] = useState<boolean>(false);
 
-  const handleShiftToggle = (shiftId: number) => {
-    setSelectedShifts((prev) =>
-      prev.includes(shiftId) ? prev.filter((id) => id !== shiftId) : [...prev, shiftId]
+  // Availability Search Results
+  const [hasContinuousSeat, setHasContinuousSeat] = useState<boolean>(false);
+  const [continuousSeats, setContinuousSeats] = useState<SeatOption[]>([]);
+  const [availabilityPerShift, setAvailabilityPerShift] = useState<Record<number, SeatOption[]>>({});
+  const [chosenAllocations, setChosenAllocations] = useState<Record<number, number>>({});
+
+  // Payment States
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentType, setPaymentType] = useState<'cash' | 'upi'>('upi');
+  const paymentRemarks ='';
+
+  const showToast = (title: string, message: string, type: 'success' | 'error' = 'error') => {
+    toast.dismiss();
+    const content = (
+      <div>
+        <div className="font-bold text-xs font-mono uppercase tracking-wider text-white">{title}</div>
+        <div className="text-xs text-slate-300 mt-0.5">{message}</div>
+      </div>
     );
+    if (type === 'success') toast.success(content, { autoClose: 3500 });
+    else toast.error(content, { autoClose: 3500 });
   };
 
-  const handleSplitSeatChange = (shiftId: number, seatIdStr: string) => {
-    setSplitSeatSelections((prev) => ({
-      ...prev,
-      [shiftId]: parseInt(seatIdStr, 10)
-    }));
-  };
-
-  const handleStudentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setStudentInfo((prev) => ({ ...prev, [name]: value }));
-    if (touched[name]) {
-      setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
-    }
-  };
-
-  const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setPaymentInfo((prev) => ({ ...prev, [name]: value }));
-    if (touched[name]) {
-      setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
-    }
-  };
-
-  const isSelectionComplete = () => {
-    if (selectedShifts.length === 0 || !startDate) return false;
-    if (apiResponse) {
-      if (apiResponse.isSplitCombo) {
-        return selectedShifts.every((shiftId) => !!splitSeatSelections[shiftId]);
-      }
-      return !!selectedSeatId;
-    }
-    return !!selectedSeatId || Object.keys(splitSeatSelections).length > 0;
-  };
-
-  const validateStep = (step: number): boolean => {
-    if (step === 1) {
-      const errName = validateField('name', studentInfo.name);
-      const errFather = validateField('fathersName', studentInfo.fathersName);
-      const errPhone = validateField('phone', studentInfo.phone);
-      const errAddress = validateField('address', studentInfo.address);
-
-      setErrors({ name: errName, fathersName: errFather, phone: errPhone, address: errAddress });
-      setTouched({ name: true, fathersName: true, phone: true, address: true });
-
-      if (errName || errFather || errPhone || errAddress) {
-        showToast("Personal Info Required", "Please fill in all personal details correctly.", "error");
-        return false;
-      }
-      return true;
-    }
-
-    if (step === 2) {
-      if (!startDate) {
-        showToast("Start Date Required", "Please select a membership start date.", "error");
-        return false;
-      }
-      if (selectedShifts.length === 0) {
-        showToast("Shift Selection Required", "Please select at least one shift slot.", "error");
-        return false;
-      }
-      return true;
-    }
-
-    if (step === 3) {
-      if (!isSelectionComplete()) {
-        showToast("Seat Assignment Required", "Please select an available desk from the grid.", "error");
-        return false;
-      }
-      return true;
-    }
-
-    return true;
-  };
-
-  const handleNextStep = () => {
-    if (validateStep(currentStep)) {
-      setCurrentStep((prev) => Math.min(prev + 1, 4));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  const handlePrevStep = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
-      return;
-    }
-
-    const errAmount = validateField('amount', paymentInfo.amount);
-    if (errAmount) {
-      setErrors((prev) => ({ ...prev, amount: errAmount }));
-      setTouched((prev) => ({ ...prev, amount: true }));
-      showToast("Payment Amount Missing", "Please enter a valid collected fee amount.", "error");
-      return;
-    }
-
-    setSubmitting(true);
+  const fetchLibraryDetails = async () => {
+    if (!id) return;
     try {
-      let finalSeatData = {};
-      if (apiResponse?.isSplitCombo) {
-        finalSeatData = {
-          isSplit: true,
-          splitBookings: Object.entries(splitSeatSelections).map(([shiftId, seatId]) => ({
-            shiftId: parseInt(shiftId, 10),
-            seatId: seatId
-          }))
-        };
-      } else {
-        finalSeatData = {
-          isSplit: false,
-          seatId: parseInt(selectedSeatId || '1', 10),
-          shiftIds: selectedShifts
-        };
+      setLoading(true);
+      const res = await fetch(`${BASE_URL}/api/v1/admission/${id}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      const data = await res.json();
+
+      if (res.status === 403) {
+        showToast('Access Denied', 'You are not authorized for this branch.', 'error');
+        navigate('/me');
+        return;
+      }
+      if (res.status === 401) {
+        showToast('Session Expired', 'Please sign in again.', 'error');
+        navigate('/signin');
+        return;
+      }
+
+      if (!res.ok) throw new Error(data?.message || 'Failed to fetch library information.');
+
+      setLibrary(data.library);
+    } catch (err: any) {
+      showToast('Error', err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLibraryDetails();
+  }, [id]);
+
+  const handleDurationChange = (months: number) => {
+    setDurationMonths(months);
+    const newEnd = calculateEndDate(startDate, months);
+    setEndDate(newEnd);
+    recalculateTotalPrice(selectedShiftIds, months);
+  };
+
+  const handleStartDateChange = (newStart: string) => {
+    setStartDate(newStart);
+    const newEnd = calculateEndDate(newStart, durationMonths);
+    setEndDate(newEnd);
+  };
+
+  const toggleShiftSelection = (shiftId: number) => {
+    let updated: number[];
+    if (selectedShiftIds.includes(shiftId)) {
+      updated = selectedShiftIds.filter((s) => s !== shiftId);
+    } else {
+      updated = [...selectedShiftIds, shiftId];
+    }
+    setSelectedShiftIds(updated);
+    recalculateTotalPrice(updated, durationMonths);
+  };
+
+  const recalculateTotalPrice = (shiftIds: number[], months: number) => {
+    if (!library) return;
+    const monthlyTotal = library.shifts
+      .filter((s) => shiftIds.includes(s.id))
+      .reduce((sum, s) => sum + s.price, 0);
+    setPaymentAmount(monthlyTotal * months);
+  };
+
+  const checkSeatAvailability = async () => {
+    if (selectedShiftIds.length === 0) {
+      showToast('Validation Error', 'Please select at least one shift.', 'error');
+      return;
+    }
+
+    try {
+      setCheckingAvailability(true);
+      const res = await fetch(`${BASE_URL}/api/v1/admission/${id}/admissions/check-availability`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          startDate,
+          endDate,
+          shiftIds: selectedShiftIds,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Failed to check seat availability');
+
+      setHasContinuousSeat(data.hasContinuousSeat);
+      setContinuousSeats(data.continuousSeats || []);
+      setAvailabilityPerShift(data.availabilityPerShift || {});
+
+      const initialMap: Record<number, number> = {};
+      data.recommendedCombination?.forEach((item: RecommendedCombo) => {
+        initialMap[item.shiftId] = item.seatId;
+      });
+      setChosenAllocations(initialMap);
+
+      setCurrentStep(2);
+    } catch (err: any) {
+      showToast('Availability Check Failed', err.message, 'error');
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
+
+  const handleSubmitAdmission = async () => {
+    try {
+      setSubmitting(true);
+
+      let allocationsPayload: Array<{ shiftId: number; seatId: number }> = [];
+      if (!assignSeatLater) {
+        allocationsPayload = Object.entries(chosenAllocations).map(([shiftIdStr, seatId]) => ({
+          shiftId: parseInt(shiftIdStr, 10),
+          seatId,
+        }));
       }
 
       const payload = {
-        ...studentInfo,
+        name,
+        fathersName,
+        gender,
+        phone,
+        email: email || undefined,
+        address,
         startDate,
         endDate,
-        ...finalSeatData,
-        ...paymentInfo
+        allocations: allocationsPayload.length > 0 ? allocationsPayload : undefined,
+        paymentAmount,
+        paymentType,
+        paymentRemarks: paymentRemarks || undefined,
       };
 
-      const response = await fetch(`${BASE_URL}/api/v1/admissions`, {
+      const res = await fetch(`${BASE_URL}/api/v1/admission/${id}/admissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        credentials: 'include',
+        body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
+      const data = await res.json();
 
-      if (response.ok && result.success) {
-        showToast("Admission Completed!", `Student ${studentInfo.name} registered successfully.`, "success");
-
-        // Clean resets
-        setStudentInfo({ name: '', fathersName: '', gender: 'male', phone: '', email: '', address: '' });
-        setStartDate('');
-        setDurationMonths('1');
-        setSelectedShifts([]);
-        setSelectedSeatId('');
-        setSplitSeatSelections({});
-        setApiResponse(null);
-        setPaymentInfo({ amount: '', paymentType: 'cash', remarks: '' });
-        setErrors({});
-        setTouched({});
-        setCurrentStep(1);
-      } else {
-        showToast("Processing Fault", result.message || "Failed to finalize seat booking record.", "error");
+      if (res.status === 403) {
+        showToast('Access Denied', 'Redirecting...', 'error');
+        navigate('/me');
+        return;
       }
-    } catch (err) {
-      console.error(err);
-      showToast("Admission Saved (Offline)", `Admission registered for ${studentInfo.name}.`, "success");
-      setStudentInfo({ name: '', fathersName: '', gender: 'male', phone: '', email: '', address: '' });
-      setStartDate('');
-      setSelectedShifts([]);
-      setSelectedSeatId('');
-      setPaymentInfo({ amount: '', paymentType: 'cash', remarks: '' });
-      setCurrentStep(1);
+
+      if (!res.ok) throw new Error(data?.message || 'Failed to complete admission.');
+
+      showToast('Admission Success!', data.message, 'success');
+      setCompletedAdmission(data.data);
+      setCurrentStep(4);
+    } catch (err: any) {
+      showToast('Admission Failed', err.message, 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const printOrSavePdf = () => {
+    if (!completedAdmission || !library) return;
+
+    const seatsFormatted =
+      completedAdmission.bookings.length > 0
+        ? completedAdmission.bookings
+            .map((b) => {
+              const s = library.shifts.find((sh) => sh.id === b.shiftId);
+              return `<tr>
+                <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #1e293b;">
+                  ${s?.name || `Shift #${b.shiftId}`} (${s?.startTime} - ${s?.endTime})
+                </td>
+                <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #2563eb; text-align: right;">
+                  Seat #${b.seatId}
+                </td>
+              </tr>`;
+            })
+            .join('')
+        : `<tr><td colspan="2" style="padding: 10px; border: 1px solid #e2e8f0; color: #d97706; text-align: center; font-weight: bold;">Floating Member — Pending Seat Assignment</td></tr>`;
+
+    const printWindow = window.open('', '_blank', 'width=800,height=900');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Admission_Receipt_M#${completedAdmission.membership.id}_${completedAdmission.student.name}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 30px; color: #0f172a; background: #fff; }
+            .receipt-box { border: 2px solid #2563eb; border-radius: 12px; padding: 24px; max-width: 650px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 16px; margin-bottom: 20px; }
+            .title { font-size: 20px; font-weight: 800; color: #2563eb; margin: 0; }
+            .subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }
+            .badge { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-weight: bold; font-family: monospace; padding: 6px 12px; border-radius: 8px; font-size: 13px; text-align: right; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; font-size: 13px; }
+            .label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold; display: block; margin-bottom: 2px; }
+            .value { font-weight: bold; color: #0f172a; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+            .total-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
+            .total-amount { font-size: 18px; font-weight: 800; color: #16a34a; }
+            .footer { text-align: center; margin-top: 24px; font-size: 11px; color: #94a3b8; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-box">
+            <div class="header">
+              <div>
+                <h1 class="title">${library.name.toUpperCase()}</h1>
+                <div class="subtitle">${library.address}</div>
+              </div>
+              <div class="badge">MEMBERSHIP ID: #${completedAdmission.membership.id}</div>
+            </div>
+
+            <div class="grid">
+              <div><span class="label">Student Name</span><span class="value">${completedAdmission.student.name}</span></div>
+              <div><span class="label">Father's Name</span><span class="value">${completedAdmission.student.fathersName}</span></div>
+              <div><span class="label">Phone</span><span class="value">${completedAdmission.student.phone}</span></div>
+              <div><span class="label">Address</span><span class="value">${completedAdmission.student.address}</span></div>
+            </div>
+
+            <div class="grid" style="background: #f8fafc; padding: 12px; border-radius: 8px;">
+              <div><span class="label">Membership Start</span><span class="value" style="color: #16a34a;">${new Date(completedAdmission.membership.startDate).toLocaleDateString()}</span></div>
+              <div><span class="label">Membership End</span><span class="value" style="color: #16a34a;">${new Date(completedAdmission.membership.endDate).toLocaleDateString()}</span></div>
+            </div>
+
+            <span class="label" style="margin-bottom: 6px;">Assigned Seats & Shifts</span>
+            <table><tbody>${seatsFormatted}</tbody></table>
+
+            <div class="total-box">
+              <div>
+                <span class="label">Payment Mode: ${completedAdmission.payment.paymentType.toUpperCase()}</span>
+                <span style="font-size: 11px; color: #64748b;">${completedAdmission.payment.remarks || 'Admission Fee Paid'}</span>
+              </div>
+              <div class="total-amount">₹${completedAdmission.payment.amount}</div>
+            </div>
+
+            <div class="footer">Thank you for choosing ${library.name}!</div>
+          </div>
+          <script>window.onload = function() { window.print(); };</script>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+  };
+
+  const shareWhatsAppReceipt = () => {
+    if (!completedAdmission || !library) return;
+
+    const formattedPhone = completedAdmission.student.phone.replace(/[^0-9]/g, '');
+    const targetPhone = formattedPhone.length === 10 ? `91${formattedPhone}` : formattedPhone;
+
+    const seatsFormatted =
+      completedAdmission.bookings.length > 0
+        ? completedAdmission.bookings
+            .map((b) => {
+              const s = library.shifts.find((sh) => sh.id === b.shiftId);
+              return `• ${s?.name || 'Shift'}: Seat #${b.seatId}`;
+            })
+            .join('\n')
+        : '• Seat: Floating Member (Assign Later)';
+
+    const message = `🎓 *ADMISSION CONFIRMED — ${library.name.toUpperCase()}* 🎓
+
+Hello *${completedAdmission.student.name}*, your admission has been successfully registered!
+
+🆔 *Membership ID:* #${completedAdmission.membership.id}
+📅 *Valid:* ${new Date(completedAdmission.membership.startDate).toLocaleDateString()} to ${new Date(completedAdmission.membership.endDate).toLocaleDateString()}
+💳 *Amount Paid:* ₹${completedAdmission.payment.amount} (${completedAdmission.payment.paymentType.toUpperCase()})
+
+🪑 *Assigned Seats:*
+${seatsFormatted}
+
+📍 *Location:* ${library.address}
+
+Thank you for joining ${library.name}!`;
+
+    window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
   return (
-    <div className="min-h-screen bg-[#080C14] text-slate-100 font-sans antialiased selection:bg-blue-600 selection:text-white relative pb-24 overflow-x-hidden">
-      {/* Toastify Global Container */}
-      {/* <ToastContainer
-        position="top-right"
-        autoClose={4000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="dark"
-      /> */}
+    <div className="min-h-screen bg-[#080C14] text-slate-100 font-sans antialiased relative selection:bg-blue-600 selection:text-white flex font-mono">
+      <div className="fixed inset-0 bg-[linear-gradient(to_right,#1f293d12_1px,transparent_1px),linear-gradient(to_bottom,#1f293d12_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[380px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent blur-[140px] pointer-events-none rounded-full" />
 
-      {/* Background Grid Accent Lights */}
-      <Navbar/>
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293d12_1px,transparent_1px),linear-gradient(to_bottom,#1f293d12_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[350px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent blur-[120px] pointer-events-none rounded-full" />
+      <LibrarySidebar
+        sidebarCollapsed={sidebarCollapsed}
+        setSidebarCollapsed={setSidebarCollapsed}
+        branchName={library?.name || 'Branch'}
+      />
 
-      {/* Main Header Banner */}
-      <div className="max-w-5xl mx-auto pt-8 sm:pt-10 px-4 sm:px-6 lg:px-8 space-y-3">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-xs font-mono text-blue-400 shadow-xl">
-          <span className="flex h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
-          <span>Multi-Tenant Admission Engine</span>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
-          <div>
-            <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-              Student Admission Control
-            </h1>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1 font-mono">
-              Register members, allocate interactive seats, and issue payment receipts.
-            </p>
-          </div>
-
-          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
-            <LuShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Schema Isolated • SSL Secured</span>
-          </div>
-        </div>
-
-        {/* Mobile Wizard Step Progress Indicator */}
-        <div className="block md:hidden pt-2">
-          <div className="flex items-center justify-between text-xs font-mono mb-2 text-slate-400">
-            <span>Step {currentStep} of 4</span>
-            <span className="text-blue-400 font-bold uppercase">
-              {currentStep === 1 && '1. Personal'}
-              {currentStep === 2 && '2. Plan & Shifts'}
-              {currentStep === 3 && '3. Seat Selection'}
-              {currentStep === 4 && '4. Payment'}
-            </span>
-          </div>
-          <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
-            <div
-              className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full transition-all duration-300"
-              style={{ width: `${(currentStep / 4) * 100}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Form Area */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <form onSubmit={handleFormSubmit} className="space-y-6">
-
-          {}
-          <div className={`${currentStep === 1 ? 'block' : 'hidden md:block'} bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 sm:p-8 backdrop-blur-xl shadow-2xl space-y-5`}>
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-              <h2 className="text-sm sm:text-base font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs">1</span>
-                Personal Profiles
-              </h2>
-              <span className="text-[11px] text-slate-500 font-mono">* Required inputs</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-              {/* Full Name */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Student Name <span className="text-rose-400">*</span>
-                </label>
-                <div className="relative">
-                  <LuUser className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    name="name"
-                    value={studentInfo.name}
-                    onChange={handleStudentChange}
-                    onBlur={() => handleBlur('name')}
-                    placeholder="e.g. Aman Verma"
-                    className={`w-full bg-[#080C14] border rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-all ${
-                      errors.name && touched.name
-                        ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
-                        : 'border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50'
-                    }`}
-                  />
-                </div>
-                {errors.name && touched.name && (
-                  <p className="text-[11px] text-rose-400 font-mono mt-1 flex items-center gap-1">
-                    <LuBug className="w-3 h-3" /> {errors.name}
-                  </p>
-                )}
-              </div>
-
-              {/* Father's Name */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Father's Name <span className="text-rose-400">*</span>
-                </label>
-                <div className="relative">
-                  <LuUser className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    name="fathersName"
-                    value={studentInfo.fathersName}
-                    onChange={handleStudentChange}
-                    onBlur={() => handleBlur('fathersName')}
-                    placeholder="e.g. Ramesh Verma"
-                    className={`w-full bg-[#080C14] border rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-all ${
-                      errors.fathersName && touched.fathersName
-                        ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
-                        : 'border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50'
-                    }`}
-                  />
-                </div>
-                {errors.fathersName && touched.fathersName && (
-                  <p className="text-[11px] text-rose-400 font-mono mt-1 flex items-center gap-1">
-                    <LuBug className="w-3 h-3" /> {errors.fathersName}
-                  </p>
-                )}
-              </div>
-
-              {/* Gender */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Gender
-                </label>
-                <select
-                  name="gender"
-                  value={studentInfo.gender}
-                  onChange={handleStudentChange}
-                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-all"
-                >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              {/* Phone */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Mobile Number <span className="text-rose-400">*</span>
-                </label>
-                <div className="relative">
-                  <LuPhone className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="tel"
-                    name="phone"
-                    maxLength={10}
-                    value={studentInfo.phone}
-                    onChange={handleStudentChange}
-                    onBlur={() => handleBlur('phone')}
-                    placeholder="9876543210"
-                    className={`w-full bg-[#080C14] border rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-all ${
-                      errors.phone && touched.phone
-                        ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
-                        : 'border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50'
-                    }`}
-                  />
-                </div>
-                {errors.phone && touched.phone && (
-                  <p className="text-[11px] text-rose-400 font-mono mt-1 flex items-center gap-1">
-                    <LuBug className="w-3 h-3" /> {errors.phone}
-                  </p>
-                )}
-              </div>
-
-              {/* Email */}
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Email Address <span className="text-slate-500">(Optional for receipts)</span>
-                </label>
-                <div className="relative">
-                  <LuMail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="email"
-                    name="email"
-                    value={studentInfo.email}
-                    onChange={handleStudentChange}
-                    placeholder="student@example.com"
-                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Permanent Address */}
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Residence Address <span className="text-rose-400">*</span>
-                </label>
-                <div className="relative">
-                  <LuMapPin className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
-                  <textarea
-                    name="address"
-                    rows={2}
-                    value={studentInfo.address}
-                    onChange={handleStudentChange}
-                    onBlur={() => handleBlur('address')}
-                    placeholder="House No., Street, Landmark, City, Pincode"
-                    className={`w-full bg-[#080C14] border rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-all resize-none ${
-                      errors.address && touched.address
-                        ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
-                        : 'border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50'
-                    }`}
-                  />
-                </div>
-                {errors.address && touched.address && (
-                  <p className="text-[11px] text-rose-400 font-mono mt-1 flex items-center gap-1">
-                    <LuBug className="w-3 h-3" /> {errors.address}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {}
-          <div className={`${currentStep === 2 ? 'block' : 'hidden md:block'} bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 sm:p-8 backdrop-blur-xl shadow-2xl space-y-5`}>
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-              <h2 className="text-sm sm:text-base font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center text-xs">2</span>
-                Plan & Shifts Configuration
-              </h2>
-              <span className="text-[11px] text-indigo-400 font-mono flex items-center gap-1">
-                <LuZap className="w-3.5 h-3.5" /> Auto Expiration
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+        <div className="bg-slate-900/60 border border-slate-800/90 rounded-2xl p-6 backdrop-blur-xl mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-400 uppercase">
+                Admissions Engine
+              </span>
+              <span className="text-slate-500 text-xs">•</span>
+              <span className="text-slate-400 text-xs flex items-center gap-1">
+                <LuMapPin className="w-3.5 h-3.5 text-slate-500" />
+                {library?.address || 'Loading...'}
               </span>
             </div>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">
+              New Student Admission — {library?.name || `Library #${id}`}
+            </h1>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-              {/* Start Date */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Start Date <span className="text-rose-400">*</span>
-                </label>
-                <div className="relative">
-                  <LuCalendar className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    required
-                    type="date"
-                    min={todayStr}
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    onClick={(e) => e.currentTarget.showPicker?.()}
-                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-mono cursor-pointer [color-scheme:dark]"
-                  />
-                </div>
-              </div>
+          <button
+            onClick={() => navigate(`/library/${id}`)}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold uppercase border border-slate-700 flex items-center gap-2"
+          >
+            <LuArrowLeft className="w-4 h-4 text-blue-400" />
+            <span>Cancel</span>
+          </button>
+        </div>
 
-              {/* Membership Duration */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Membership Term Duration
-                </label>
-                <select
-                  value={durationMonths}
-                  onChange={(e) => setDurationMonths(e.target.value)}
-                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-mono"
+        {loading ? (
+          <div className="py-20 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
+            <LuRefreshCw className="w-8 h-8 animate-spin text-blue-400" />
+            <span>Loading branch configuration & shift catalog...</span>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {currentStep < 4 && (
+              <div className="grid grid-cols-3 gap-2 sm:gap-4 border-b border-slate-800 pb-6">
+                <div
+                  onClick={() => setCurrentStep(1)}
+                  className={`cursor-pointer p-3 rounded-xl border flex items-center gap-3 ${
+                    currentStep === 1
+                      ? 'bg-blue-600/10 border-blue-500/40 text-blue-400'
+                      : 'bg-slate-900/40 border-slate-800 text-slate-500'
+                  }`}
                 >
-                  <option value="1">1 Month Plan</option>
-                  <option value="2">2 Months Plan</option>
-                  <option value="3">3 Months Plan</option>
-                  <option value="6">6 Months Plan (10% Discount)</option>
-                  <option value="12">1 Year Plan (2 Months Free)</option>
-                </select>
-              </div>
-
-              {/* Expiration Date Display Banner */}
-              {endDate && (
-                <div className="sm:col-span-2 p-3.5 rounded-xl bg-gradient-to-r from-blue-950/40 via-indigo-950/30 to-slate-900 border border-blue-500/30 flex items-center justify-between text-xs font-mono text-blue-300 shadow-inner">
-                  <span className="flex items-center gap-2">
-                    <LuSparkles className="w-4 h-4 text-blue-400 animate-pulse" />
-                    Calculated Expiration Date:
-                  </span>
-                  <strong className="text-white font-bold bg-blue-600/20 px-3 py-1 rounded-lg border border-blue-500/30 text-xs">
-                    {endDate}
-                  </strong>
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      currentStep === 1 ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    1
+                  </div>
+                  <div className="hidden sm:block">
+                    <div className="text-xs font-bold uppercase text-white">Student Info</div>
+                    <div className="text-[10px] text-slate-400">Demographics & Plan</div>
+                  </div>
                 </div>
-              )}
 
-              {/* Shift Selection Pills */}
-              <div className="sm:col-span-2 space-y-2 pt-2">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Select Shift Timings <span className="text-rose-400">*</span>
-                </label>
+                <div
+                  className={`p-3 rounded-xl border flex items-center gap-3 ${
+                    currentStep === 2
+                      ? 'bg-blue-600/10 border-blue-500/40 text-blue-400'
+                      : 'bg-slate-900/40 border-slate-800 text-slate-500'
+                  }`}
+                >
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      currentStep === 2 ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    2
+                  </div>
+                  <div className="hidden sm:block">
+                    <div className="text-xs font-bold uppercase text-white">Seats & Shifts</div>
+                    <div className="text-[10px] text-slate-400">Matrix Engine Search</div>
+                  </div>
+                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { id: 1, label: 'Shift 1 (Morning)', time: '06:00 AM – 12:00 PM' },
-                    { id: 2, label: 'Shift 2 (Afternoon)', time: '12:00 PM – 06:00 PM' },
-                    { id: 3, label: 'Shift 3 (Evening)', time: '06:00 PM – 11:00 PM' }
-                  ].map((shift) => {
-                    const isSelected = selectedShifts.includes(shift.id);
-                    return (
+                <div
+                  className={`p-3 rounded-xl border flex items-center gap-3 ${
+                    currentStep === 3
+                      ? 'bg-blue-600/10 border-blue-500/40 text-blue-400'
+                      : 'bg-slate-900/40 border-slate-800 text-slate-500'
+                  }`}
+                >
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      currentStep === 3 ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    3
+                  </div>
+                  <div className="hidden sm:block">
+                    <div className="text-xs font-bold uppercase text-white">Payment & Finalize</div>
+                    <div className="text-[10px] text-slate-400">Receipt & Activation</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 1: STUDENT PROFILE */}
+            {currentStep === 1 && (
+              <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <LuUser className="w-5 h-5 text-blue-400" /> Student Profile & Duration
+                </h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">
+                      Full Name <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Rahul Kumar"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">
+                      Father's Name <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Suresh Kumar"
+                      value={fathersName}
+                      onChange={(e) => setFathersName(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">Gender</label>
+                    <select
+                      value={gender}
+                      onChange={(e: any) => setGender(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">
+                      Phone Number <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="10 digit mobile number"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="optional@domain.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">
+                      Physical Address <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Locality / Village / City"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-800/80 space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <LuCalendar className="w-4 h-4 text-blue-400" /> Select Membership Plan
+                  </h3>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    {[1, 2, 3].map((m) => (
                       <button
+                        key={m}
                         type="button"
-                        key={shift.id}
-                        onClick={() => handleShiftToggle(shift.id)}
-                        className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group ${
-                          isSelected
-                            ? 'bg-blue-600/15 border-blue-500 text-white shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/50'
-                            : 'bg-[#080C14] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        onClick={() => handleDurationChange(m)}
+                        className={`py-3 px-4 rounded-xl font-bold text-xs uppercase border transition-all ${
+                          durationMonths === m
+                            ? 'bg-blue-600/20 border-blue-500 text-blue-400 shadow-lg shadow-blue-500/10'
+                            : 'bg-[#080C14] border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs font-mono">{shift.label}</span>
-                          <span
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center text-[10px] ${
-                              isSelected ? 'bg-blue-500 border-blue-400 text-white' : 'border-slate-700'
-                            }`}
-                          >
-                            {isSelected && <LuCheck className="w-3 h-3 stroke-[3]" />}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1">
-                          <LuClock className="w-3 h-3 text-slate-500" />
-                          {shift.time}
-                        </div>
+                        {m} Month{m > 1 ? 's' : ''} Plan
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
+                    ))}
+                  </div>
 
-          {}
-          <div className={`${currentStep === 3 ? 'block' : 'hidden md:block'} bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 sm:p-8 backdrop-blur-xl shadow-2xl space-y-5`}>
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-              <h2 className="text-sm sm:text-base font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-xs">3</span>
-                Seat Grid Space Picker
-              </h2>
-              <span className="text-[11px] text-slate-400 font-mono">
-                {selectedShifts.length > 0 ? `${selectedShifts.length} Shift(s) Selected` : 'Select shift first'}
-              </span>
-            </div>
-
-            {checkingSeats && (
-              <div className="py-8 text-center space-y-3">
-                <LuLoader className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
-                <p className="text-xs font-mono text-slate-400">Scanning real-time occupancy index...</p>
-              </div>
-            )}
-
-            {!checkingSeats && apiResponse && (
-              <div className="space-y-4">
-                {/* CASE A: Standard Continuous Seats available */}
-                {!apiResponse.isSplitCombo && apiResponse.availableSeats && apiResponse.availableSeats.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                      <span>Available Desks ({apiResponse.availableSeats.length})</span>
-                      <div className="flex items-center gap-3 text-[11px]">
-                        <span className="flex items-center gap-1 text-emerald-400"><span className="w-2.5 h-2.5 rounded bg-emerald-500" /> Selected</span>
-                        <span className="flex items-center gap-1 text-slate-400"><span className="w-2.5 h-2.5 rounded bg-slate-800 border border-slate-700" /> Open</span>
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs uppercase text-slate-300 mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => handleStartDateChange(e.target.value)}
+                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                      />
                     </div>
 
-                    <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-2.5 max-h-56 overflow-y-auto p-3 bg-[#080C14] rounded-xl border border-slate-800">
-                      {apiResponse.availableSeats.map((seat) => {
-                        const isSelected = selectedSeatId === seat.id.toString();
-                        return (
-                          <button
-                            type="button"
-                            key={seat.id}
-                            onClick={() => setSelectedSeatId(seat.id.toString())}
-                            className={`p-2.5 rounded-xl border text-center transition-all ${
-                              isSelected
-                                ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-1 ring-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                                : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-800'
-                            }`}
-                          >
-                            <div className="font-mono text-xs font-bold flex items-center justify-center gap-1">
-                              <LuArmchair className="w-3.5 h-3.5" /> #{seat.seatNumber}
-                            </div>
-                            <div className="text-[9px] text-slate-500 mt-0.5 font-mono truncate">
-                              {seat.room?.name || 'Main Hall'}
-                            </div>
-                          </button>
-                        );
-                      })}
+                    <div>
+                      <label className="block text-xs uppercase text-slate-300 mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                      />
                     </div>
                   </div>
-                )}
+                </div>
 
-                {/* CASE B: Fallback Alert Banner - Split Shift Combinations Plan */}
-                {apiResponse.isSplitCombo && apiResponse.splitOptions && (
-                  <div className="p-5 rounded-2xl bg-amber-950/30 border border-amber-500/30 space-y-4">
-                    <div className="flex items-center gap-2 text-amber-400 text-xs font-mono font-bold">
-                      <LuBug className="w-4 h-4 shrink-0" />
-                      Split Seat Assignment Required
-                    </div>
-                    <p className="text-xs text-amber-200/80 leading-relaxed">
-                      No single desk is open for all selected shifts. Assign an open seat individually for each shift:
-                    </p>
+                <div className="pt-4 border-t border-slate-800/80">
+                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                    <LuClock className="w-4 h-4 text-blue-400" /> Select Shift(s)
+                  </h3>
 
-                    <div className="space-y-3 pt-1">
-                      {apiResponse.splitOptions.map((option) => (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {library?.shifts.map((shift) => {
+                      const isSelected = selectedShiftIds.includes(shift.id);
+                      return (
                         <div
-                          key={option.shiftId}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#080C14] border border-amber-500/20"
+                          key={shift.id}
+                          onClick={() => toggleShiftSelection(shift.id)}
+                          className={`cursor-pointer p-4 rounded-2xl border transition-all ${
+                            isSelected
+                              ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                              : 'bg-[#080C14] border-slate-800 text-slate-400 hover:border-slate-700'
+                          }`}
                         >
-                          <span className="text-xs font-mono text-slate-300 font-bold flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-amber-400" />
-                            Shift {option.shiftId} Desk:
-                          </span>
-                          <select
-                            required
-                            value={splitSeatSelections[option.shiftId] || ''}
-                            onChange={(e) => handleSplitSeatChange(option.shiftId, e.target.value)}
-                            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono w-full sm:w-64"
-                          >
-                            <option value="">-- Assign Shift {option.shiftId} Seat --</option>
-                            {option.freeSeats.map((seat) => (
-                              <option key={seat.id} value={seat.id}>
-                                Seat #{seat.seatNumber} ({seat.room?.name || 'Main Area'})
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sm">{shift.name}</span>
+                            {isSelected && <LuCheck className="w-4 h-4 text-blue-400" />}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-1">
+                            {shift.startTime} – {shift.endTime}
+                          </div>
+                          <div className="text-xs font-bold text-emerald-400 mt-2">
+                            ₹{shift.price * durationMonths} total
+                          </div>
                         </div>
-                      ))}
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (!name || !fathersName || !phone || !address) {
+                      showToast('Missing Fields', 'Please complete all required fields.', 'error');
+                      return;
+                    }
+                    checkSeatAvailability();
+                  }}
+                  disabled={checkingAvailability}
+                  className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold uppercase rounded-xl flex items-center justify-center gap-2"
+                >
+                  {checkingAvailability ? (
+                    <LuRefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <LuSparkles className="w-4 h-4" />
+                  )}
+                  <span>Search Seat Availability</span>
+                </button>
+              </div>
+            )}
+
+            {/* STEP 2: SEATS MATRIX (REDESIGNED WITH RESPONSIVE BOXES & SCROLLBAR) */}
+            {currentStep === 2 && (
+              <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <LuGrid2X2 className="w-5 h-5 text-blue-400" /> Seat Availability Engine
+                  </h2>
+
+                  <label className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={assignSeatLater}
+                      onChange={(e) => setAssignSeatLater(e.target.checked)}
+                      className="rounded bg-[#080C14] border-slate-700 text-blue-600 focus:ring-0"
+                    />
+                    <span className="text-xs text-slate-300 font-bold uppercase">
+                      Floating Member (Assign Seat Later)
+                    </span>
+                  </label>
+                </div>
+
+                {!assignSeatLater && (
+                  <div className="space-y-6">
+                    {hasContinuousSeat ? (
+                      <div className="space-y-4">
+                        <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex items-start gap-3">
+                          <LuCheckCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                          <div className="text-emerald-400 font-bold text-xs uppercase">
+                            Continuous Single Seat Available! Select one for all shifts:
+                          </div>
+                        </div>
+
+                        {/* SCROLLABLE BOX CONTAINER FOR CONTINUOUS SEATS */}
+                        <div className="bg-[#080C14] border border-slate-800 p-5 rounded-2xl">
+                          <div className="max-h-64 overflow-y-auto grid grid-cols-2 sm:grid-cols-4 gap-3 custom-scrollbar pr-2">
+                            {continuousSeats.map((seat) => {
+                              const isSelected = chosenAllocations[selectedShiftIds[0]] === seat.id;
+                              return (
+                                <button
+                                  key={seat.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const targetSeatId = seat.id;
+                                    const updatedMap: Record<number, number> = {};
+                                    selectedShiftIds.forEach((sId) => (updatedMap[sId] = targetSeatId));
+                                    setChosenAllocations(updatedMap);
+                                  }}
+                                  className={`p-4 rounded-2xl border text-center transition-all ${
+                                    isSelected
+                                      ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/40 scale-105'
+                                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-600'
+                                  }`}
+                                >
+                                  <div className="font-bold text-lg font-mono">#{seat.seatNumber}</div>
+                                  <div className="text-[9px] uppercase tracking-wider mt-1 truncate opacity-70">
+                                    {seat.roomName}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-start gap-3">
+                          <LuBug className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                          <div className="text-amber-400 font-bold text-xs uppercase">
+                            Split Seats Suggested (Select a seat for each shift)
+                          </div>
+                        </div>
+
+                        {selectedShiftIds.map((shiftId) => {
+                          const shiftObj = library?.shifts.find((s) => s.id === shiftId);
+                          const availableSeats = availabilityPerShift[shiftId] || [];
+
+                          return (
+                            <div key={shiftId} className="bg-[#080C14] border border-slate-800 p-5 rounded-2xl space-y-3">
+                              <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                                {shiftObj?.name} ({shiftObj?.startTime} - {shiftObj?.endTime})
+                              </span>
+
+                              {/* SCROLLABLE BOX CONTAINER FOR SPLIT SEATS */}
+                              <div className="max-h-48 overflow-y-auto grid grid-cols-3 sm:grid-cols-5 gap-3 custom-scrollbar pr-2">
+                                {availableSeats.map((seat) => {
+                                  const isSelected = chosenAllocations[shiftId] === seat.id;
+                                  return (
+                                    <button
+                                      key={seat.id}
+                                      type="button"
+                                      onClick={() =>
+                                        setChosenAllocations({
+                                          ...chosenAllocations,
+                                          [shiftId]: seat.id,
+                                        })
+                                      }
+                                      className={`p-3 rounded-xl border text-center transition-all ${
+                                        isSelected
+                                          ? 'bg-blue-600 border-blue-500 text-white shadow-md'
+                                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-600'
+                                      }`}
+                                    >
+                                      <div className="font-bold text-base font-mono">#{seat.seatNumber}</div>
+                                      <div className="text-[8px] uppercase tracking-tight mt-0.5 truncate opacity-70">
+                                        {seat.roomName}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-4 pt-4 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(1)}
+                    className="w-1/2 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold uppercase rounded-xl transition-all"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(3)}
+                    className="w-1/2 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase rounded-xl transition-all shadow-lg shadow-blue-600/30"
+                  >
+                    Proceed to Payment
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: PAYMENT */}
+            {currentStep === 3 && (
+              <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 space-y-6">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <LuCreditCard className="w-5 h-5 text-blue-400" /> Payment & Activation
+                </h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">Amount (INR)</label>
+                    <input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase text-slate-300 mb-1">Mode</label>
+                    <select
+                      value={paymentType}
+                      onChange={(e: any) => setPaymentType(e.target.value)}
+                      className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="upi">UPI / Online</option>
+                      <option value="cash">Cash</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-4 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(2)}
+                    className="w-1/2 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold uppercase rounded-xl transition-all"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitAdmission}
+                    disabled={submitting}
+                    className="w-1/2 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/30"
+                  >
+                    {submitting ? <LuRefreshCw className="w-4 h-4 animate-spin" /> : <LuCheck className="w-4 h-4" />}
+                    <span>Complete Admission (₹{paymentAmount})</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 4: RECEIPT */}
+            {currentStep === 4 && completedAdmission && (
+              <div className="bg-slate-900/60 border border-slate-800/90 rounded-3xl p-6 sm:p-10 backdrop-blur-xl space-y-8 max-w-3xl mx-auto">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                      <LuShieldCheck className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Admission Confirmed!</h2>
                     </div>
                   </div>
-                )}
 
-                {/* CASE C: Library is completely full across requested boundaries */}
-                {((!apiResponse.isSplitCombo && apiResponse.availableSeats?.length === 0) ||
-                  (apiResponse.isSplitCombo && apiResponse.splitOptions?.length === 0)) && (
-                  <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center gap-2">
-                    <LuBug className="w-4 h-4 shrink-0" />
-                    No open seat options match this combination of shifts and dates.
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={printOrSavePdf}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 flex items-center gap-2 transition-all"
+                    >
+                      <LuPrinter className="w-4 h-4 text-blue-400" />
+                      <span>Print / PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={shareWhatsAppReceipt}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/30"
+                    >
+                      <LuShare2 className="w-4 h-4" />
+                      <span>Share WhatsApp</span>
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
-
-            {!checkingSeats && !apiResponse && (
-              <div className="p-4 rounded-xl bg-[#080C14] border border-slate-800/80 text-slate-500 text-xs font-mono flex items-center gap-2">
-                <LuInfo className="w-4 h-4 text-blue-400 shrink-0" />
-                Select start date and shifts above to load available seats.
-              </div>
-            )}
-          </div>
-
-          {}
-          <div className={`${currentStep === 4 ? 'block' : 'hidden md:block'} bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 sm:p-8 backdrop-blur-xl shadow-2xl space-y-5`}>
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-              <h2 className="text-sm sm:text-base font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-xs">4</span>
-                Payment Ledger Details
-              </h2>
-              <span className="text-[11px] text-emerald-400 font-mono">Instant UPI / Cash Receipt</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-              {/* Fee Amount */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Collected Fee Amount (INR) <span className="text-rose-400">*</span>
-                </label>
-                <div className="relative">
-                  <span className="text-slate-500 font-mono text-xs absolute left-3.5 top-1/2 -translate-y-1/2">₹</span>
-                  <input
-                    type="number"
-                    name="amount"
-                    value={paymentInfo.amount}
-                    onChange={handlePaymentChange}
-                    onBlur={() => handleBlur('amount')}
-                    placeholder="800"
-                    className={`w-full bg-[#080C14] border rounded-xl pl-8 pr-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none font-mono transition-all ${
-                      errors.amount && touched.amount
-                        ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
-                        : 'border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50'
-                    }`}
-                  />
                 </div>
-                {errors.amount && touched.amount && (
-                  <p className="text-[11px] text-rose-400 font-mono mt-1 flex items-center gap-1">
-                    <LuBug className="w-3 h-3" /> {errors.amount}
-                  </p>
-                )}
+
+                <button
+                  type="button"
+                  onClick={() => navigate(`/library/${id}`)}
+                  className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/30 tracking-widest"
+                >
+                  <LuArrowLeft className="w-4 h-4" />
+                  <span>Go to Branch Dashboard</span>
+                </button>
               </div>
-
-              {/* Payment Mode */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Payment Mode
-                </label>
-                <div className="relative">
-                  <LuCreditCard className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <select
-                    name="paymentType"
-                    value={paymentInfo.paymentType}
-                    onChange={handlePaymentChange}
-                    className="w-full bg-[#080C14] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-mono"
-                  >
-                    <option value="cash">Cash Collection</option>
-                    <option value="upi">UPI (GPay / PhonePe / Paytm)</option>
-                    <option value="bank">Bank Transfer / NEFT</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Remarks */}
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="block text-xs font-mono uppercase text-slate-300">
-                  Transaction Footnotes / Reference ID
-                </label>
-                <input
-                  type="text"
-                  name="remarks"
-                  value={paymentInfo.remarks}
-                  onChange={handlePaymentChange}
-                  placeholder="e.g. Paid full amount via Paytm. Ref: #UPI-9821389"
-                  className="w-full bg-[#080C14] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          {}
-          {/* Mobile Step Control Buttons */}
-          <div className="flex md:hidden items-center justify-between gap-3 pt-2">
-            {currentStep > 1 ? (
-              <button
-                type="button"
-                onClick={handlePrevStep}
-                className="px-5 py-3 rounded-xl bg-slate-800 text-slate-200 border border-slate-700 text-xs font-mono font-bold uppercase transition-all"
-              >
-                Previous Step
-              </button>
-            ) : <div />}
-
-            {currentStep < 4 ? (
-              <button
-                type="button"
-                onClick={handleNextStep}
-                className="px-6 py-3 rounded-xl bg-blue-600 text-white border border-blue-400/30 text-xs font-mono font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-blue-600/30"
-              >
-                <span>Next Step</span>
-                <LuArrowRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/30 text-xs font-mono font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/30"
-              >
-                {submitting ? (
-                  <>
-                    <LuLoader className="w-4 h-4 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Submit</span>
-                    <LuCheck className="w-4 h-4 stroke-[3]" />
-                  </>
-                )}
-              </button>
             )}
           </div>
-
-          {/* Desktop Direct Submit Action Block */}
-          <div className="hidden md:block">
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`w-full py-4 rounded-xl font-mono text-xs uppercase font-bold tracking-wider transition-all shadow-xl flex items-center justify-center gap-2 border ${
-                submitting
-                  ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white border-blue-400/30 shadow-blue-600/25 hover:shadow-blue-500/40'
-              }`}
-            >
-              {submitting ? (
-                <>
-                  <LuLoader className="w-4 h-4 animate-spin" />
-                  <span>Writing Data Transactions to Cloud...</span>
-                </>
-              ) : (
-                <>
-                  <span>Execute Complete Admission & Booking</span>
-                  <LuArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+        )}
       </main>
     </div>
   );
